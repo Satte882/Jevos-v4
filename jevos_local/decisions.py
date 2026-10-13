@@ -24,6 +24,10 @@ COLUMNS = {"source", "provider", "task_p", "idea_p", "decision_p",
            "urgency_score", "urgency_confidence"}
 
 
+COLUMNS.update({"choice_" + key + "_p" for key in CHOICE["criteria"]})
+COLUMNS.update({"urgency_" + str(i) + "_p" for i in range(4)})
+
+
 def questions_for(mode: str) -> dict:
     if mode not in MODES:
         raise ValueError("Unbekannter Fragetyp.")
@@ -62,6 +66,7 @@ def result_row(source: str, provider: str, mode: str, answers: dict, threshold: 
             raise JevosError("Choice-Wahrscheinlichkeiten fehlen.")
         for key, val in probs.items():
             _unit(val, key)
+        row.update({"choice_" + key + "_p": round(float(value), 4) for key, value in probs.items()})
         row["category"] = answer["choice"]
         row["category_confidence"] = round(_unit(answer.get("confidence"), "category"), 4)
     if mode in ("score", "all"):
@@ -75,6 +80,7 @@ def result_row(source: str, provider: str, mode: str, answers: dict, threshold: 
             raise JevosError("Ungültige Score-Antwort.")
         for key, val in probs.items():
             _unit(val, key)
+        row.update({"urgency_" + key + "_p": round(float(value), 4) for key, value in probs.items()})
         row["urgency_score"] = round(float(score), 4)
         row["urgency_confidence"] = round(_unit(answer.get("confidence"), "urgency"), 4)
     return row
@@ -87,6 +93,8 @@ def pretty_row(row: dict) -> str:
             parts.append(f"{key}={row[key + '_p']:.2f}{' JA' if row[key + '_yes'] else ''}")
     if "category" in row:
         parts.append(f"Choice={row['category']} (Konfidenz {row['category_confidence']:.2f})")
+        parts.append("Optionen " + ", ".join(f"{key}:{row['choice_' + key + '_p']:.2f}" for key in CHOICE["criteria"]))
     if "urgency_score" in row:
         parts.append(f"Score={row['urgency_score']:.2f}/3 (Konfidenz {row['urgency_confidence']:.2f})")
+        parts.append("Stufen " + ", ".join(f"{i}:{row['urgency_' + str(i) + '_p']:.2f}" for i in range(4)))
     return f"{row['source']}: " + " | ".join(parts)
