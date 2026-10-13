@@ -19,6 +19,10 @@ label{cursor:pointer}.controls{display:flex;flex-wrap:wrap;align-items:center;ga
 .warning{background:#2e2a22;border:1px solid #766038;border-radius:8px;padding:12px}
 #status{margin-top:12px;white-space:pre-wrap}#status.error{color:#ffaca2}
 #summary{color:#b5d4fa}#export-check{accent-color:#86bbf8}
+.tech-summary{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
+.info-button{display:inline-flex;align-items:center;justify-content:center;width:25px;height:25px;padding:0;border-radius:50%;background:#27374b;border:1px solid #7895bb;color:#e9eef5;font-size:.85rem;font-weight:700}
+.info-panel{background:#111822;border:1px solid #45566f;border-radius:8px;padding:11px 13px;margin-bottom:14px}
+.info-panel[hidden]{display:none}
 @media(max-width:780px){.cols{grid-template-columns:1fr}header{display:block}}
 </style>
 </head>
@@ -29,6 +33,18 @@ label{cursor:pointer}.controls{display:flex;flex-wrap:wrap;align-items:center;ga
 </header>
 <section>
 <h2>1 · Text eingeben</h2>
+<div class="tech-summary">
+  <strong>Hier arbeitet spaCy · de_core_news_md</strong>
+  <button type="button" class="info-button" id="tech-info-button" aria-controls="tech-info" aria-expanded="false" aria-label="Informationen zu spaCy und dem deutschen Sprachmodell" title="Was ist spaCy?">i</button>
+  <span class="muted">+ Python/Regex · vollständig lokal · kein Jev</span>
+</div>
+<div class="info-panel" id="tech-info" hidden>
+  <strong>spaCy</strong> ist eine kostenlose Python-Bibliothek für Sprachverarbeitung (NLP).
+  Das installierte deutsche KI-Modell <code>de_core_news_md</code> erkennt Textstellen wie Personennamen, Unternehmen und Orte.
+  <strong>Regex</strong> findet zusätzlich Muster wie E-Mails, Telefonnummern und IBANs.
+  <strong>Python</strong> ersetzt die Treffer durch konsistente Platzhalter.
+  Das ist <strong>nicht Jevos-v4</strong>; alle Schritte laufen auf deinem Rechner. Die Erkennung ist nicht vollständig zuverlässig – Ergebnis immer prüfen.
+</div>
 <p>Text einfügen oder eine TXT-, MD- oder DOCX-Datei auswählen. Eingaben bleiben in dieser lokalen Anwendung; es erfolgt keine Übertragung an Jev oder ein Frontier-LLM.</p>
 <div class="controls"><input id="file" type="file" accept=".txt,.md,.docx,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
 <button id="clear" class="secondary">Zurücksetzen</button></div>
@@ -66,6 +82,11 @@ label{cursor:pointer}.controls{display:flex;flex-wrap:wrap;align-items:center;ga
 "use strict";
 const TOKEN = "__SESSION_TOKEN__";
 const $ = id => document.getElementById(id);
+$("tech-info-button").addEventListener("click", () => {
+  const details = $("tech-info");
+  details.hidden = !details.hidden;
+  $("tech-info-button").setAttribute("aria-expanded", String(!details.hidden));
+});
 const original = $("original"), cleaned = $("cleaned");
 const file = $("file"), copy = $("copy"), download = $("download"), review = $("reviewed");
 const status = (text, error=false) => {
