@@ -87,6 +87,10 @@ def handler_factory(service: InboxService, token: str):
                     result = service.reference_action(payload.get("folder", ""),
                                                        payload.get("source", ""),
                                                        payload.get("action", ""))
+                elif self.path == "/api/cancel":
+                    if payload.get("confirm") != "CANCEL":
+                        raise ValueError("Ausdrückliche Abbruchbestätigung fehlt.")
+                    result = service.cancel_pending()
                 elif self.path == "/api/prepare":
                     if payload.get("confirm") != "PREPARE":
                         raise ValueError("Separate Freigabe für Sicherung/Stapel fehlt.")
