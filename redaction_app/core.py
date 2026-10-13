@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from dataclasses import dataclass
+from functools import lru_cache
 
 MAX_TEXT_CHARS = 100_000
 
@@ -33,7 +34,8 @@ class Finding:
     priority: int
 
 
-def _ner(text: str) -> list[Finding]:
+@lru_cache(maxsize=1)
+def _load_model():
     """Ohne deutsches lokales NER-Modell keine vermeintlich vollständige Bereinigung."""
     try:
         import spacy
@@ -53,9 +55,12 @@ def _ner(text: str) -> list[Finding]:
             "Kein lokales deutsches spaCy-NER-Modell installiert. "
             "Bitte scripts/setup-redaction.ps1 ausführen."
         )
-    # Kein Text geht zu einem externen Dienst. Bei mehreren Aufrufen wird
-    # die Pipeline pro Prozess gecacht.
-    doc = model(text)
+    return model
+
+
+def _ner(text: str) -> list[Finding]:
+    # Nur lokale Pipeline; in jedem Prozess einmal geladen.
+    doc = _load_model()(text)
     return [
         Finding(ent.start_char, ent.end_char, ENTITY_LABELS[ent.label_], ent.text, 10)
         for ent in doc.ents
