@@ -38,7 +38,9 @@ body {
   margin: 0;
   padding: 24px 32px 60px;
   color: var(--ink);
-  background: radial-gradient(circle at 80% -35%, color-mix(in srgb, var(--ice) 7%, transparent), transparent 35rem), var(--surface-0);
+  background:
+    radial-gradient(circle at 78% -25%, color-mix(in srgb, var(--ice) 10%, transparent), transparent 37rem),
+    var(--surface-0);
 }
 h1 { margin: 0; font-size: 1.7rem; font-weight: 680; letter-spacing: -.03em; }
 h2 { margin: 0 0 12px; font-size: 1.08rem; font-weight: 670; letter-spacing: -.01em; }
@@ -90,10 +92,10 @@ section {
   min-width: 0;
   padding: 19px 20px;
   margin: 0 0 16px;
-  background: var(--surface-1);
-  border: 1px solid var(--line);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-1);
+  box-shadow: var(--shadow-1), inset 0 1px color-mix(in srgb, var(--ink) 3%, transparent);
 }
 header { margin-bottom: 18px; }
 .app-header {
@@ -112,14 +114,15 @@ header { margin-bottom: 18px; }
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  min-height: 37px;
-  padding: 7px 13px;
+  min-height: 42px;
+  padding: 9px 19px;
   color: var(--ice-strong);
   text-decoration: none;
   font-size: .89rem;
   font-weight: 600;
   white-space: nowrap;
-  background: var(--surface-2);
+  background: color-mix(in srgb, var(--ice) 11%, var(--surface-3));
+  border-color: color-mix(in srgb, var(--ice) 44%, var(--line));
 }
 .view-switch:hover { text-decoration: none; }
 .workspace { display: grid; grid-template-columns: minmax(0, 43fr) minmax(0, 57fr); gap: 16px 20px; align-items: start; }
@@ -130,8 +133,8 @@ header { margin-bottom: 18px; }
   min-width: 0;
   padding: 15px 16px;
   margin: 0 0 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
+  background: var(--surface-1);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
 }
 .note .line { justify-content: space-between; align-items: center; }
@@ -200,8 +203,8 @@ strong { font-weight: 650; }
 .redaction-app textarea {
   display: block;
   width: 100%;
-  min-height: 340px;
-  height: min(55vh, 650px);
+  min-height: 220px;
+  height: clamp(220px, 31vh, 340px);
   resize: vertical;
   padding: 13px;
   font: 14px/1.5 ui-monospace, Consolas, monospace;
@@ -229,4 +232,180 @@ strong { font-weight: 650; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
+
+/* Function-first UI refinements: information density, surfaces, and focused actions. */
+[hidden] { display: none !important; }
+.muted { color: var(--muted-strong); }
+.workspace section > h2 { margin-bottom: 10px; }
+.technology { font-size: .88rem; margin: 3px 0 12px; }
+.provider-fieldset {
+  padding: 10px 10px 8px;
+  border-color: var(--line);
+  background: var(--surface-1);
+}
+.provider-fieldset .tech-option {
+  min-height: 41px;
+  padding: 8px 11px;
+  margin: 0 6px 5px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  transition: background-color .15s, border-color .15s;
+}
+.provider-fieldset .tech-option:has(input:checked) {
+  border-color: var(--ice);
+  background: color-mix(in srgb, var(--ice) 13%, var(--surface-3));
+}
+.provider-fieldset label { white-space: nowrap; }
+.cloud-consent {
+  padding: 12px 14px;
+  margin: 10px 0;
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+}
+.cloud-consent label { display: block; }
+.cloud-consent small { display: block; margin-top: 5px; }
+.quiet-details { font-size: .87rem; margin-top: 10px; color: var(--muted-strong); }
+.quiet-details > summary {
+  min-height: 28px;
+  color: var(--ice);
+  font-size: .86rem;
+}
+.quiet-details > p { margin: 6px 0; }
+.reference-section { padding: 14px 20px; background: var(--surface-1); border-color: var(--line); }
+.reference-disclosure { margin: 0; }
+.reference-disclosure > summary {
+  color: var(--ink-soft);
+  font-size: .98rem;
+  font-weight: 650;
+  min-height: 28px;
+}
+.reference-disclosure > summary .muted { font-size: .82rem; font-weight: 400; }
+.reference-disclosure > p { margin: 12px 0 9px; }
+.note .line:first-child { margin: 0 0 9px; }
+.note .line { margin: 7px 0; }
+.note-title { max-width: 80%; }
+.note .path { font-weight: 640; }
+.model-scores { font-size: .83rem; margin: 6px 0 8px; }
+.chip.state-approved {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 11%, var(--surface-3));
+}
+.chip.state-deferred { color: var(--muted-strong); }
+.chip.state-review {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 11%, var(--surface-3));
+}
+.decision-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+.decision-actions select { min-width: 190px; max-width: 300px; }
+button.primary:not(:disabled), #copy.primary:not(:disabled) {
+  border-color: var(--ice);
+  color: var(--on-accent);
+  background: var(--ice);
+  font-weight: 650;
+}
+button.primary:hover:not(:disabled), #copy.primary:hover:not(:disabled) {
+  background: var(--ice-strong);
+  color: var(--on-accent);
+}
+.status-success { color: var(--success); }
+.status-error { color: var(--danger); }
+.status-important { color: var(--ink-soft); }
+
+/* Redaction: purposeful source/result contrast, shorter fields, visible review/export. */
+.redaction-app header.app-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 24px;
+  min-height: 65px;
+  margin-bottom: 18px;
+}
+.redaction-app header.app-header .view-switch { grid-column: 2; }
+.redaction-app header.app-header .header-title p { margin: 1px 0 0; }
+.redaction-app section { margin: 0 0 14px; padding: 16px 19px; }
+.redaction-app .tech-summary { margin: 4px 0 12px; gap: 8px; font-size: .87rem; }
+.redaction-app .tech-summary .muted { font-size: .82rem; }
+.redaction-app .info-panel { margin-bottom: 12px; }
+.redaction-app .controls { margin-top: 9px; }
+.redaction-app .file-toolbar { gap: 9px 13px; margin: 5px 0 13px; }
+.file-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 37px;
+  padding: 8px 13px;
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.file-action:hover { color: var(--ice-strong); border-color: var(--ice); }
+.file-toolbar:focus-within .file-action { outline: 2px solid var(--ice-strong); outline-offset: 2px; }
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.file-status { font-size: .82rem; max-width: 50ch; overflow-wrap: anywhere; }
+.redaction-app .cols { gap: 16px; }
+.redaction-app .text-field-label { margin: 0 0 8px; font-size: .96rem; }
+.redaction-app .text-output .text-field-label { color: var(--ice-strong); }
+.redaction-app .cols textarea {
+  margin: 0;
+  padding: 12px;
+  color: var(--ink);
+  background: var(--surface-input);
+  border: 1px solid var(--line-strong);
+}
+.redaction-app #cleaned {
+  background: color-mix(in srgb, var(--ice) 5%, var(--surface-input));
+  border-color: color-mix(in srgb, var(--ice) 54%, var(--line));
+}
+.redaction-app .primary-workflow-action { margin-top: 12px; }
+.redaction-app .review-export {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.redaction-app .review-export > section { margin-bottom: 0; min-height: 172px; }
+.review-reminder {
+  color: var(--ink-soft);
+  margin: 6px 0 9px;
+  padding-left: 10px;
+  border-left: 2px solid var(--warning);
+  font-size: .88rem;
+}
+.review-confirm { display: flex; align-items: flex-start; gap: 9px; margin-top: 10px; }
+.review-confirm input { flex-shrink: 0; margin-top: 4px; }
+.review-stage .quiet-details { margin-top: 8px; }
+.review-stage #summary { margin: 6px 0; font-size: .84rem; }
+.review-stage #summary:empty { display: none; }
+.export-stage .export-actions { margin: 14px 0 10px; gap: 9px; }
+.export-stage #status { font-size: .85rem; }
+.export-stage small { display: block; font-size: .82rem; }
+@media (max-width: 1120px) {
+  .redaction-app .review-export { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 720px) {
+  .redaction-app header.app-header { grid-template-columns: minmax(0, 1fr); }
+  .redaction-app header.app-header .view-switch { grid-column: 1; justify-self: start; }
 }
