@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Obsidian Inbox-Assistent</title>
+<style>
+:root {color-scheme:dark; font:15px/1.45 system-ui,Segoe UI,sans-serif; background:#11151b;color:#e9eef5}
+*{box-sizing:border-box}body{margin:0 auto;max-width:1100px;padding:24px 20px 80px}
+h1{margin:0;font-size:1.65rem}h2{font-size:1.08rem;margin:0 0 12px}small,.muted{color:#a9b5c5}
+header{display:flex;align-items:flex-end;gap:20px;justify-content:space-between;margin-bottom:20px}
+section,.note{background:#1a212b;border:1px solid #354151;border-radius:12px;padding:18px;margin-bottom:16px}
+button,select,input{font:inherit}button{cursor:pointer;background:#4467b3;border:1px solid #6e90d0;color:white;border-radius:8px;padding:9px 12px}
+button.secondary{background:#2a3442;border-color:#465364}button:disabled{opacity:.4;cursor:not-allowed}
+button:focus,select:focus,input:focus{outline:2px solid #93b7fa}
+button:hover:not(:disabled){filter:brightness(1.14)}
+select{background:#111822;color:#e9eef5;border:1px solid #536176;border-radius:7px;padding:9px;max-width:100%;min-width:220px}
+label{cursor:pointer}.actions,.line{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.line{margin:10px 0}
+.note{padding:15px}.note .line{justify-content:space-between;align-items:center}.note-title{font-weight:650;word-break:break-word}
+.path{color:#bdd3f5;word-break:break-all}pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;background:#0f141b;border-radius:8px;max-height:300px;overflow:auto}
+#message{margin:16px 0;white-space:pre-wrap}#message.error{color:#ff9c98}#message.ok{color:#a6e5bf}
+.chip{padding:3px 7px;background:#27374b;border-radius:5px;font-size:.8rem}
+details{margin-top:9px}summary{cursor:pointer;color:#bed1f7}
+fieldset{border:1px solid #455061;border-radius:8px;padding:10px}legend{padding:0 8px}
+strong{font-weight:650}.kpi{color:#b9d0f0}#ref-panel{margin-top:12px}
+#ref-panel .line{border-bottom:1px solid #313b49;padding:6px 0}#ref-panel button{padding:5px 8px}
+@media(max-width:650px){header{display:block}.actions{align-items:stretch}button{max-width:100%}select{min-width:0;width:100%}}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>Obsidian Inbox-Assistent</h1><div class="muted">Analysieren → Prüfen → in Obsidian verschieben</div></div>
+  <button id="refresh" class="secondary">Ansicht aktualisieren</button>
+</header>
+<section>
+  <h2>1 · Inbox analysieren</h2>
+  <p class="muted">Die Ordner und passenden Referenznotizen werden lokal vorausgewählt. Nur das ausgewählte Modell entscheidet.</p>
+  <fieldset><legend>Modellanbieter (nur einer aktiv)</legend>
+    <label><input type="radio" name="provider" value="local" checked> jevos-v4 · lokal</label>
+    &nbsp;&nbsp;
+    <label><input type="radio" name="provider" value="jev"> Jev · TypeSafe Cloud</label>
+  </fieldset>
+  <div class="line"><label><input type="checkbox" id="cloud"> Ich stimme der Übertragung von Inbox-Notizen und ausgewählten Referenztexten an TypeSafe zu.</label></div>
+  <div class="line"><label>Maximale Notizen: <select id="limit"><option>5</option><option selected>20</option><option>50</option></select></label>
+    <button id="analyze">Vorschläge berechnen</button></div>
+  <small>Cloud-API benötigt TYPESAFE_API_KEY; keine automatische Umschaltung. Es können API-Kosten entstehen. Frühere manuelle Freigaben der erneut analysierten Notizen werden zurückgesetzt.</small>
+</section>
+<section>
+  <h2>Referenznotizen kontrollieren</h2>
+  <p class="muted">Pro Zielordner automatisch ausgewählte Referenzen lassen sich bevorzugen oder ausschließen. Änderungen setzen bisherige Analyse- und Freigabeergebnisse zurück.</p>
+  <div class="line"><label>Ordner: <select id="ref-folder"></select></label><button id="ref-load" class="secondary">Referenzen anzeigen</button></div>
+  <div id="ref-panel"></div>
+</section>
+<section>
+  <h2>2 · Vorschläge prüfen</h2>
+  <div id="overview" class="muted"></div>
+  <div id="notes"></div>
+</section>
+<section>
+  <h2>3 · Verschiebung vorbereiten</h2>
+  <p class="muted">Erst nach deiner separaten Bestätigung wird ein vollständiges Vault-Backup erstellt und ein Ausführungsplan gespeichert. Die tatsächliche Verschiebung erfolgt nur über den Obsidian-Befehl der Erweiterung.</p>
+  <button id="prepare" class="secondary">Freigegebene Notizen sichern und vorbereiten</button>
+  <div id="bridge" class="muted"></div>
+</section>
+<div id="message" role="status" aria-live="polite"></div>
+<script>
+"use strict";
+const TOKEN = "__SESSION_TOKEN__";
+let state = null;
+const $ = id => document.getElementById(id);
+const elem = (tag, text, className) => {
+  const e = document.createElement(tag);
+  if (text !== undefined) e.textContent = text;
+  if (className) e.className = className;
+  return e;
+};
+function message(text, bad=false) {
+  $("message").textContent = text;
+  $("message").className = bad ? "error" : "ok";
+}
+async function api(path, data) {
+  const response = await fetch(path, {
+    method: data === undefined ? "GET" : "POST",
+    headers: {"X-Session-Token":TOKEN, ...(data === undefined ? {} : {"Content-Type":"application/json"})},
+    ...(data === undefined ? {} : {body: JSON.stringify(data)})
+  });
+  const value = await response.json();
+  if (!response.ok) throw new Error(value.error || "Unbekannter Serverfehler.");
+  return value;
+}
+const run = async fn => {
+  try {await fn();} catch (error) {message(error.message, true);}
+};
+const button = (label, handler, variant="secondary") => {
+  const e = elem("button",label,variant);
+  e.addEventListener("click",()=>run(handler));
+  return e;
+};
+function options(select, values, selected) {
+  select.replaceChildren();
+  for(const [value,label] of values){
+    const op = elem("option",label); op.value=value; if(value===selected) op.selected=true; select.append(op);
+  }
+}
+async function refresh() {
+  state = await api("/api/state");
+  const rows = state.rows;
+  const approved = rows.filter(x=>x.decision?.status==="approved").length;
+  const deferred = rows.filter(x=>x.decision?.status==="deferred").length;
+  $("overview").textContent = rows.length+" Inbox-Notizen · "+approved+" freigegeben · "+deferred+" zurückgestellt · "+(rows.length-approved-deferred)+" offen";
+  $("prepare").disabled = !approved || state.bridge.status==="awaiting-obsidian";
+  const allFolders = state.folders.map(f=>[f,f]);
+  const currently = $("ref-folder").value;
+  options($("ref-folder"),allFolders,currently);
+  $("notes").replaceChildren();
+  for(const row of rows) showNote(row,allFolders);
+  const bridge = $("bridge"); bridge.replaceChildren();
+  const b = state.bridge;
+  if(b.status==="awaiting-obsidian") {
+    bridge.append(elem("p","Stapel "+b.batch_id+" vorbereitet. Bitte Obsidian öffnen → Strg+P → „Freigegebene Inbox-Verschiebungen anwenden“ und dort bestätigen."));
+    bridge.append(elem("p","Sicherung: "+b.backup.path+" ("+b.backup.files+" Dateien)"));
+  } else if(b.status==="finished") {
+    const ok=b.results.filter(x=>x.status==="moved").length;
+    bridge.append(elem("p","Letzter Stapel: "+ok+" erfolgreich verschoben. "+(b.results.length-ok)+" fehlgeschlagen."));
+    for(const r of b.results) bridge.append(elem("div",r.status+": "+r.source+(r.error?" – "+r.error:"")));
+  } else bridge.textContent = "Noch kein Verschiebungsstapel vorbereitet.";
+}
+function showNote(row,folders) {
+  const card=elem("div",undefined,"note");
+  const heading=elem("div",undefined,"line");
+  heading.append(elem("span",row.source,"note-title"));
+  heading.append(elem("span",row.decision?.status || (row.analysis ? "Zu prüfen" : "Nicht analysiert"),"chip"));
+  card.append(heading);
+  const a=row.analysis;
+  if(a) {
+    const target=elem("div",undefined,"line");
+    target.append(elem("span",a.manual_review?"Manuell prüfen – kein sicherer Treffer":"Empfehlung: "+a.primary,"path"));
+    target.append(elem("span","Modell "+a.provider,"chip"));
+    card.append(target);
+    const probs=elem("div",a.alternatives.map(x=>x.folder+" ("+Math.round(x.probability*100)+"%)").join(" · "),"muted");
+    card.append(probs);
+    const refs=elem("details");
+    refs.append(elem("summary","Genutzte Referenznotizen ("+a.reference_sources.length+")"));
+    refs.append(elem("div",a.reference_sources.join("\n"),"muted"));
+    card.append(refs);
+    const choices=elem("div",undefined,"line");
+    const select=elem("select");
+    options(select,folders,a.primary || a.alternatives[0]?.folder);
+    choices.append(select);
+    choices.append(button("Bestätigen",async()=>{
+      await api("/api/decide",{source:row.source,status:"approved",destination:select.value});
+      message("Freigegeben: "+row.source); await refresh();
+    }));
+    choices.append(button("Zurückstellen",async()=>{
+      await api("/api/decide",{source:row.source,status:"deferred"});
+      message("Zurückgestellt: "+row.source); await refresh();
+    }));
+    card.append(choices);
+  }
+  const details=elem("details");
+  const summary=elem("summary","Notizinhalt anzeigen"); details.append(summary);
+  details.addEventListener("toggle",()=>{if(details.open && !details.dataset.loaded){
+    details.dataset.loaded="1";
+    run(async()=>{const x=await api("/api/note?source="+encodeURIComponent(row.source));details.append(elem("pre",x.text));});
+  }});
+  card.append(details);$("notes").append(card);
+}
+async function references() {
+  const folder=$("ref-folder").value;
+  if(!folder) return;
+  const data=await api("/api/references?folder="+encodeURIComponent(folder));
+  const panel=$("ref-panel");panel.replaceChildren();
+  if(!data.references.length) return panel.append(elem("p","Keine geeigneten Markdown-Referenzen."));
+  panel.append(elem("small",data.references.length+" Referenzen (maximal 50 pro Ordner im Index)"));
+  for(const r of data.references){
+    const line=elem("div",undefined,"line");
+    line.append(elem("span",r.source+(r.excluded?" · ausgeschlossen":r.pinned?" · bevorzugt":"")));
+    line.append(button(r.excluded?"Einbeziehen":"Ausschließen",async()=>{
+      await api("/api/reference",{folder,source:r.source,action:r.excluded?"include":"exclude"});
+      await references();await refresh();message("Referenzen aktualisiert; Vorschläge bitte erneut berechnen.");
+    }));
+    line.append(button(r.pinned?"Nicht bevorzugen":"Bevorzugen",async()=>{
+      await api("/api/reference",{folder,source:r.source,action:r.pinned?"unpin":"pin"});
+      await references();await refresh();message("Referenzen aktualisiert; Vorschläge bitte erneut berechnen.");
+    }));
+    panel.append(line);
+  }
+}
+$("refresh").addEventListener("click",()=>run(refresh));
+$("ref-load").addEventListener("click",()=>run(references));
+$("analyze").addEventListener("click",()=>run(async()=>{
+  const provider=document.querySelector('input[name="provider"]:checked').value;
+  const consent=$("cloud").checked;
+  if(provider==="jev" && !consent) return message("Cloud erfordert deine ausdrückliche Zustimmung.",true);
+  if(provider==="jev" && !confirm("Die ausgewählten Notizinhalte und Referenztexte werden an TypeSafe übertragen. Fortfahren?")) return;
+  $("analyze").disabled=true;
+  message("Analysiere Inbox mit "+provider+".");
+  try {
+    const result=await api("/api/analyze",{provider,cloud_consent:consent,limit:Number($("limit").value)});
+    message(result.total+" Notizen ausgewertet; "+result.review_needed+" manuell prüfen."+
+      (result.errors.length?"\nFehler: "+result.errors.map(x=>x.source+": "+x.error).join("\n"):""));
+    await refresh();
+  } finally {$("analyze").disabled=false;}
+}));
+$("prepare").addEventListener("click",()=>run(async()=>{
+  const approved=state.rows.filter(x=>x.decision?.status==="approved");
+  if(!approved.length) return message("Keine bestätigten Notizen.",true);
+  const summary=approved.map(x=>x.source+" → "+x.decision.destination).join("\n");
+  if(!confirm("Diese "+approved.length+" Verschiebungen vorbereiten und den GESAMTEN Vault sichern?\n\n"+summary))return;
+  $("prepare").disabled=true;
+  try {
+    const plan=await api("/api/prepare",{confirm:"PREPARE"});
+    message(plan.moves.length+" Verschiebungen vorbereitet. Bitte Obsidian-Befehl aufrufen.");
+    await refresh();
+  } finally {$("prepare").disabled=false;}
+}));
+run(refresh);
+</script>
+</body>
+</html>
