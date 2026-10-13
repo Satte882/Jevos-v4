@@ -77,6 +77,23 @@ class JevosClient:
     def health(self) -> dict:
         return self._request("/health")
 
+    def ask(self, note: str, questions: dict) -> dict:
+        """Beliebige Jev-Entscheidungstypen in EINER Anfrage beantworten."""
+        if not isinstance(note, str) or not note.strip():
+            raise ValueError("Der Text darf nicht leer sein.")
+        if not isinstance(questions, dict) or not questions:
+            raise ValueError("Mindestens eine Frage ist erforderlich.")
+        result = self._request(
+            "/v1/systemone",
+            {"model": "jev-latest", "state": note, "questions": questions},
+        )
+        answers = result.get("answers")
+        if not isinstance(answers, dict) or any(
+            not isinstance(answers.get(name), dict) for name in questions
+        ):
+            raise JevosError("Unvollständige API-Antwort ('answers').")
+        return answers
+
     def classify(self, note: str) -> dict[str, float]:
         if not isinstance(note, str) or not note.strip():
             raise ValueError("Der Text darf nicht leer sein.")
@@ -97,3 +114,51 @@ class JevosClient:
                 raise JevosError(f"Ungültige Wahrscheinlichkeit für '{name}'.")
             probabilities[name] = float(number)
         return probabilities
+
+
+class TypeSafeClient(JevosClient):
+    """Offizielle Jev-Cloud-API; feste URL, kein lokaler Fallback."""
+
+    def __init__(self, api_key: str | None = None, timeout: int = 30):
+        self.base_url = "https://api.typesafe.ai"
+        self.timeout = timeout
+        self.api_key = api_key if api_key is not None else os.environ.get("TYPESAFE_API_KEY", "")
+        if not self.api_key or not self.api_key.strip():
+            raise ValueError(
+                "TYPESAFE_API_KEY fehlt. Den Schlüssel nur lokal als "
+                "Umgebungsvariable setzen oder scripts/run.ps1 verwenden."
+            )
+
+    def _request(self, endpoint: str, payload: dict | None = None) -> dict:
+        if endpoint not in ("/v1/systemone", "/v1/models"):
+            raise JevosError("Nicht unterstützter TypeSafe-API-Pfad.")
+        body = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers = {
+            "Accept": "application/json",
+            "Authorization": "Bearer " + self.api_key,
+        }
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+        request = Request(
+            self.base_url + endpoint, data=body, headers=headers,
+            method="POST" if payload is not None else "GET",
+        )
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                content = response.read()
+        except HTTPError as exc:
+            # Nie den Response-Body ausgeben: Er könnte vertrauliche Nutzerdaten enthalten.
+            raise JevosError(f"TypeSafe API: HTTP {exc.code} (Berechtigung, Guthaben oder Anfrage prüfen).") from None
+        except (URLError, TimeoutError, OSError):
+            raise JevosError("TypeSafe API ist nicht erreichbar (Netzwerk/Timeout).") from None
+        try:
+            result = json.loads(content)
+        except (ValueError, UnicodeDecodeError):
+            raise JevosError("TypeSafe lieferte kein gültiges JSON.") from None
+        if not isinstance(result, dict):
+            raise JevosError("Unerwartetes TypeSafe-Antwortformat.")
+        return result
+
+    def health(self) -> dict:
+        """GET /v1/models ist der dokumentierte Cloud-Check (mit Authentifizierung)."""
+        return self._request("/v1/models")
