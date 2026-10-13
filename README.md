@@ -1,129 +1,111 @@
-# Obsidian Inbox-Assistent – Jev Cloud oder jevos-v4 lokal
+# Jevos-v4 – Obsidian Inbox-Assistent und lokale Textbereinigung
 
-**Privates Windows-11-MVP.** Der Assistent empfiehlt für noch nicht eingeordnete Obsidian-Markdown-Notizen einen **bestehenden** Zielordner (bis zu zwei Alternativen), lernt die Ablagelogik aus ausgewählten bestehenden Notizen und verschiebt **ausschließlich nach zwei expliziten Freigaben** über Obsidian. Keine automatische Verarbeitung im Hintergrund.
+**Privates Windows-11-Projekt mit zwei Funktionen:**
 
-**Status:** GitHub-Unit-Tests werden automatisiert ausgeführt. **Windows-Modellstart, echte Jev-API-Abfragen, Obsidian-Plugin und Link-Aktualisierung müssen lokal getestet werden.** Vor produktiven Verschiebungen einen synthetischen Test-Vault verwenden.
+1. **Obsidian Inbox-Assistent:** Jev Cloud oder das lokale Modell `jevos-v4` schlägt für noch nicht eingeordnete Markdown-Notizen einen **bestehenden Zielordner** vor. Ein lokaler Index wählt dafür relevante Referenznotizen aus; **das Modell wird nicht trainiert**. Unsichere Zuordnungen bleiben offen. Verschiebungen erfolgen ausschließlich nach einer Freigabe im Browser **und** einer weiteren Freigabe im Obsidian-Plugin.
+2. **Text für externe KI bereinigen:** spaCy (`de_core_news_md`), Regex und Python erkennen und ersetzen lokal ausgewählte personenbezogene bzw. sensible Angaben. **Hier kommt kein Jev zum Einsatz.** Die bereinigte Fassung muss vor dem Kopieren oder Speichern geprüft und ausdrücklich freigegeben werden.
 
-## Neu: Text für externe KI bereinigen
+**Status (Oktober 2026):** Windows-Start, lokaler Modellbetrieb, Jev-Cloud-Anbindung, Obsidian-Plugin und Notizverschiebungen einschließlich Backup und Link-Aktualisierung wurden lokal mit synthetischen Testdaten abgenommen. Wiederholungstests für drei Notizen/Dateien wurden erfolgreich berichtet; Originaldateien blieben unverändert. GitHub Actions prüfen Python-, JavaScript-, Plugin- und PowerShell-Regressionsfälle unter Windows und Ubuntu. **Die fachliche Qualität jeder neuen Ordnerempfehlung ist damit nicht garantiert** – gerade mehrdeutige Ziele erfordern weiterhin deine Entscheidung.
 
-Unter `http://127.0.0.1:8765/anonymize` gibt es eine **eigenständige lokale Textbereinigung**. Text einfügen oder TXT/MD/DOCX importieren, mit deutschem spaCy-NER und Erkennungsregeln bereinigen, Ergebnis manuell kontrollieren und als reinen Text kopieren oder speichern. **Kein Frontier-LLM, Jev oder TypeSafe wird dazu kontaktiert.** Der Obsidian-Inbox-Assistent bleibt unverändert.
+## Tägliche Nutzung – ohne VS Code
 
-**Einmalig spaCy und das lokale deutsche Modell installieren:**
+Den **Jevos – KI-Assistent**-Button auf dem Windows-Desktop oder das **Bot-Symbol** im Obsidian-Plugin **Jev Inbox Bridge** anklicken. Falls nötig, startet der lokale Webserver im Hintergrund; anschließend öffnet sich die Oberfläche im Standardbrowser:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\setup-redaction.ps1
-```
+- **Inbox:** http://127.0.0.1:8765/
+- **Textbereinigung:** http://127.0.0.1:8765/anonymize (auch über das Schild-Symbol in Obsidian)
 
-Danach `scripts/start-ui.ps1` neu starten. Details, Grenzen und lokales Abnahmeverfahren: [Textbereinigung – Anleitung](docs/TEXTBEREINIGUNG.md).
+Der lokale Modellserver `jevos-v4` unter `127.0.0.1:8017` ist **ein separater Prozess**. Er muss für Inbox-Analysen mit `jevos-v4 · lokal` laufen; die Textbereinigung und die Jev-Cloud-Variante benötigen ihn nicht.
 
-**Datenschutz-Hinweis:** Automatisches Ersetzen identifizierender Stellen ist keine nachgewiesene vollständige Anonymisierung. Vor der Weitergabe des Textes an ChatGPT, Claude oder andere Cloud-Modelle ist eine manuelle Prüfung erforderlich.
-
-## Vorhandene Pfade (bereits festgelegt)
-
-| Verwendung | Pfad |
-|---|---|
-| Obsidian-Vault | `C:\Users\user\Documents\104_0Admin_Projektordner\1010_Obsidian_0Admin-OS` |
-| Inbox | `C:\Users\user\Documents\104_0Admin_Projektordner\1010_Obsidian_0Admin-OS\ZZZZZ_Inbox_noch_Einzuordnen` |
-| Lokales Git-Repo (derzeit leer) | `C:\Users\user\Documents\GitHub\Jevos-v4` |
-
-In `config.example.json` vorkonfiguriert. Für den sicheren Test-Vault optional `config.json` anlegen; sie wird nicht in Git eingecheckt.
-
-## Mit einem Klick starten (ohne VS Code)
-
-**Windows-Desktop:** Die Verknüpfung wird einmalig erstellt durch:
+Einmalig einen Desktop-Button erzeugen oder aktualisieren (PowerShell im Repository):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\create-desktop-shortcut.ps1 -Force
 ```
 
-Danach genügt ein Doppelklick auf **Jevos - KI-Assistent**. Der lokale Server wird im Hintergrund gestartet, falls er noch nicht läuft; die bestehende Weboberfläche öffnet sich automatisch im Browser.
+Die Obsidian-Erweiterung muss im **tatsächlich geöffneten Vault** installiert und unter **Einstellungen → Community-Plugins** aktiviert sein. Die Symbole öffnen die Browseroberflächen; das Plugin übernimmt weiterhin die gesondert freigegebenen Datei-Verschiebungen. **[Details zu Start, Plugin-Installation und Fehlerbehebung](docs/STARTEN-OHNE-VSCODE.md).**
 
-**Obsidian:** Das vorhandene Plugin **Jev Inbox Bridge** bietet nun zwei linke Symbole (Inbox und Textbereinigung). Die neue Plugin-Version muss in dem Vault installiert und aktiviert werden, in dem die Symbole erscheinen sollen. Die bestehende lokale `config.json` bleibt davon unberührt.
+## Installations- und Projektpfade
 
-**[Einrichtung und Fehlersuche](docs/STARTEN-OHNE-VSCODE.md)**
+| Verwendung | Pfad |
+|---|---|
+| Obsidian-Vault | `C:\Users\user\Documents\104_0Admin_Projektordner\1010_Obsidian_0Admin-OS` |
+| Inbox | `C:\Users\user\Documents\104_0Admin_Projektordner\1010_Obsidian_0Admin-OS\ZZZZZ_Inbox_noch_Einzuordnen` |
+| Lokales Git-Repository | `C:\Users\user\Documents\GitHub\Jevos-v4` |
 
-## Einmaliger Windows-Start
+Die Pfade sind in `config.example.json` hinterlegt. Die **tatsächlich verwendeten** Vault- und Inbox-Pfade kommen aus der lokalen `config.json` (falls vorhanden) und werden oben im Inbox-Dashboard angezeigt. Eine Installation des Plugins in einem anderen Vault ändert diese Backend-Konfiguration **nicht**. `config.json` gehört nicht nach GitHub.
 
-**Voraussetzungen:** Git, Python 3.11+, Obsidian Desktop. Node ist nur für den Plugin-Syntaxcheck in CI nötig.
-
-In **PowerShell**:
+**Voraussetzungen für eine Neuinstallation:** Git, Python 3.11+, Obsidian Desktop; Node.js ist für die JavaScript-/Plugin-Tests hilfreich. Ist das Repository bereits geklont, **nicht erneut `git clone` im bestehenden Ordner ausführen**.
 
 ```powershell
 cd C:\Users\user\Documents\GitHub\Jevos-v4
-git clone https://github.com/Satte882/Jevos-v4.git .
+git pull --ff-only origin main
 py -3 -m unittest discover -s tests -v
+```
+
+Manueller Start der Browseroberfläche, falls der Launcher nicht verwendet wird:
+
+```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\start-ui.ps1
 ```
 
-Dann `http://127.0.0.1:8765` im Browser öffnen.
-
-Das Skript fragt **optional** verdeckt nach deinem TypeSafe-Key, falls Jev Cloud in dieser Sitzung benutzt werden soll. Ohne Key läuft nur der lokale Anbieter (nach separater Modellinstallation). **API-Schlüssel niemals ins Repo oder in den Chat schreiben.**
-
-### TypeSafe-Key dauerhaft lokal hinterlegen (.env)
-
-Lege im Repository-Hauptordner eine Datei mit dem **exakten** Namen `.env` an:
-
-```dotenv
-TYPESAFE_API_KEY=DEIN_PERSOENLICHER_API_KEY
-```
-
-Beim nächsten Start mit `scripts/start-ui.ps1` wird **nur** diese Variable eingelesen. Die Eingabeaufforderung entfällt; der Wert wird weder angezeigt noch nach dem Beenden als von diesem Skript gesetzte Umgebungsvariable behalten. Eine bereits gesetzte Umgebungsvariable `TYPESAFE_API_KEY` hat Vorrang. `.env` ist bereits in `.gitignore` ausgeschlossen und darf niemals eingecheckt oder geteilt werden. Der Schlüssel liegt darin **unverschlüsselt** und sollte nur unter deinem Windows-Benutzerkonto zugänglich sein.
-
-Die Checkbox und Freigabe für die tatsächliche Übertragung von Inbox-Daten an **Jev · TypeSafe Cloud** bleiben unverändert notwendig. Für die neue lokale Textbereinigung ist kein API-Key erforderlich.
-
-### Jev Cloud testen – ohne lokale Modellinstallation
-
-Beim Start `J` auswählen und den privaten TypeSafe-Key verdeckt eingeben. Im Browser **Jev Cloud** wählen und bei der Analyse die Cloud-Übertragung explizit freigeben. Bei Bedarf zunächst nur fünf **synthetische** Notizen in einem Test-Vault verwenden. An TypeSafe gesendete Notizen und Referenztexte verlassen den Rechner; mögliche API-Kosten beachten.
-
-### jevos-v4 lokal testen – einmalig installieren
+### Lokales Entscheidungsmodell installieren oder starten
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\install-jev.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\start-jev.ps1
 ```
 
-Das zweite Kommando **im eigenen PowerShell-Fenster geöffnet lassen**. Es startet den CPU-Modellserver unter `127.0.0.1:8017`. Im Browser anschließend **jevos-v4 lokal** wählen. Das Installationsskript lädt offizielle Release-Dateien vom 04.10.2026 herunter und prüft SHA-256-Prüfsummen.
+Der zweite Befehl startet den Modellserver unter `127.0.0.1:8017` und bleibt in einem eigenen PowerShell-Fenster aktiv. `start-jev.ps1` verwendet vier CPU-Threads und kein Vorwärmen im Leerlauf. Das Installationsskript verifiziert die SHA-256-Prüfsummen der heruntergeladenen Release-Dateien. Für bereits installierte Modelle genügt der **Startbefehl**.
 
-## Ablauf in drei Schritten
+### TypeSafe-Key dauerhaft lokal hinterlegen
 
-Die Prüfansicht zeigt den **aktiven Vault und Inbox-Pfad**. Links wählt man eine Inbox-Datei, rechts stehen lesbare Originalauszüge, bis zu drei Zielalternativen und die tatsächlich übergebenen Referenzpassagen. Der vollständige Originaltext ist separat abrufbar. Unsichere Vorschläge benötigen eine bewusste Zielauswahl; ein Ordner wird dabei nicht vorgewählt.
+Optional eine Datei `.env` im Repository-Hauptordner anlegen:
 
-Die Analyse läuft im Hintergrund mit Fortschritt pro Datei. Fehler bleiben an der jeweiligen Notiz sichtbar; alte Vorschläge und Freigaben werden vor einer erneuten Analyse entfernt. Ergebnisse werden getrennt je Vault unter `.local/vault-state/` gespeichert. Archiv- und Backlog-Ordner sind bei der Vorauswahl standardmäßig ausgeschlossen, können aber explizit einbezogen und weiterhin manuell gewählt werden.
-
-Für die CPU-Verarbeitung nutzt `start-jev.ps1` vier Threads ohne Vorwärmen im Leerlauf. Pro Artikel werden relevante Originalpassagen aus dem gesamten Text ausgewählt (maximal 1.400 Zeichen), dazu fünf Zielordner mit jeweils bis zu zwei Referenzauszügen (je 180 Zeichen). Die Auszüge sind in der Prüfansicht nachvollziehbar; das Modell erhält keine vollständigen langen Artikel. Das lokale Zeitlimit beträgt 90 Sekunden. Bei einem Verbindungsfehler oder Zeitlimit werden weitere Abfragen im selben Lauf ausgesetzt, um keine Warteschlange aufzubauen.
-
-1. **Inbox analysieren.** Modellanbieter explizit wählen. Der lokale Index untersucht Ordner, ausgewählte Referenznotizen und ermittelt maximal acht Zielkandidaten. Das Modell trifft eine Choice-Entscheidung. Eine schwache oder mehrdeutige Entscheidung wird mit „Manuell prüfen“ markiert.
-2. **Vorschläge prüfen.** Hauptordner bestätigen, beliebigen existierenden Ordner als Korrektur wählen oder zurückstellen. Automatisch gewählte Referenznotizen im Panel bevorzugen/ausschließen; anschließend neu analysieren.
-3. **Freigegebene Notizen verschieben.** Im Browser Stapel bestätigen und vollständigen Vault als ZIP außerhalb des Vaults sichern. Dann in **geöffnetem Obsidian** den Befehl **„Freigegebene Inbox-Verschiebungen anwenden“** aufrufen und **dort separat bestätigen**. Erst das Obsidian-Plugin führt `app.fileManager.renameFile()` aus und schreibt das Ergebnis.
-
-**Ohne aktiviertes Obsidian-Plugin werden niemals Dateien verschoben.**
-
-### Obsidian-Plugin installieren (erst Test-Vault!)
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\install-obsidian-plugin.ps1
+```dotenv
+TYPESAFE_API_KEY=DEIN_PERSOENLICHER_API_KEY
 ```
 
-Das Skript liest den Vault-Pfad aus `config.json` (falls vorhanden), ansonsten aus `config.example.json`, und kopiert `manifest.json` und `main.js` in `.obsidian\plugins\jev-inbox-bridge`. In Obsidian **Community-Plugins aktivieren** und die Erweiterung **Jev Inbox Bridge** anschalten. Bei einem späteren bewussten Plugin-Update `-Force` angeben.
+`start-ui.ps1` lädt den Key beim Start automatisch; eine bereits gesetzte Umgebungsvariable hat Vorrang. Beim manuellen Start kann ohne vorhandenen Key eine verdeckte Eingabe erfolgen; beim Ein-Klick-Hintergrundstart gibt es **keine Eingabeaufforderung**. `.env` ist gitignoriert, speichert den Schlüssel aber **unverschlüsselt**. Niemals committen, in Tickets kopieren oder teilen.
 
-**Vor dem ersten echten Einsatz:** Im Test-Vault zwei verlinkte Notizen erstellen, eine zur Verschiebung freigeben und die Links prüfen. Die vorhandene Obsidian-Einstellung zur automatischen Link-Aktualisierung beeinflusst das Ergebnis.
+**Jev · TypeSafe Cloud** sendet ausgewählte Notizinhalte und Referenzpassagen erst nach ausdrücklicher Zustimmung und einer zusätzlichen Bestätigung. Dabei können API-Kosten entstehen. Es gibt keinen automatischen Modellwechsel.
 
-## Sicherheit und Datenhaltung
+### Textbereinigung einmalig einrichten
 
-- Die Oberfläche ist nur auf `127.0.0.1:8765` erreichbar; API-Änderungen erfordern ein Sitzungstoken, Cloud zusätzlich ein ausdrückliches Opt-in.
-- Die **Originalnotizen** werden beim Scannen, Vorschlagen und Freigeben niemals verändert. Dateien dürfen nur direkt in der konfigurierten Inbox liegen.
-- Vor dem Versand eines Plans werden Kollisionen und SHA-256-Prüfsummen geprüft; das **vollständige** Vault-Backup wird lokal als ZIP geprüft. Das Obsidian-Plugin prüft Plan, Backup und Dateien nochmals und stoppt beim ersten Fehler.
-- Ordner werden nicht neu angelegt; bestehende Dateien nicht überschrieben. Bei Abbruch bleibt das Backup erhalten.
-- Lokale Ergebnisse, Backups, Schlüssel und Vault-Konfiguration dürfen nicht nach Git. `.local/` und `config.json` sind ignoriert.
-- Jev/jevos-v4 bieten strukturierte **Noul, Choice, Score**-Entscheidungen. Hier nutzt das MVP hauptsächlich **Choice**. Das frühere CLI-Experiment bleibt optional erreichbar: `py -3 -m jevos_local --provider local demo --mode all` (oder `jev`).
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-redaction.ps1
+```
 
-## Dokumentation
+Dadurch werden spaCy und das deutsche Sprachmodell `de_core_news_md` in der lokalen Python-Umgebung installiert. TXT, MD und DOCX können eingelesen werden; die bereinigte Fassung ist manuell editierbar und als Text kopierbar oder als TXT exportierbar.
 
-- [Verbindliche fachliche und nichtfunktionale MVP-Spezifikation](docs/MVP-SPEZIFIKATION.md)
-- [Konkreter Auftrag für den lokalen Coding-Agenten](docs/CODING_AGENT_HANDOFF.md)
-- [Separate Outlook-Phase](docs/OUTLOOK.md)
-- [Entscheidungsmodell-Verifikation](docs/VALIDIERUNG.md)
+**Wichtig:** Das Verfahren bietet keine Garantie vollständiger Anonymität. Es kann Namen, indirekte Identifikatoren oder Geschäftsgeheimnisse übersehen. Vor der Weitergabe an ChatGPT, Claude oder andere externe Modelle ist der **gesamte Ausgabetext** manuell zu prüfen. Kein automatischer Versand an ein externes KI-Modell. [Anleitung und Grenzen](docs/TEXTBEREINIGUNG.md).
 
-**Wichtigste Qualitätsprüfung:** Ob die lexikalische Zielkandidaten-Vorauswahl bei 20–30 echten Notizen den tatsächlich passenden Ordner überhaupt unter die acht Vorschläge bringt. Erst danach die KI-Qualität (Top-1/Top-3) beurteilen.
+## Inbox-Workflow: Analysieren → Prüfen → Verschieben
 
-**Quellen:** [TypeSafe Console](https://console.typesafe.ai/keys) · [jevos-v4 Release](https://github.com/feder-cr/jev/releases/tag/jevos-v4) · [Obsidian API](https://github.com/obsidianmd/obsidian-api).
+1. **Analyse starten:** Jev-Provider und maximale Notizzahl wählen. Der lokale Index ermittelt zunächst bis zu **acht** Zielkandidaten; maximal **fünf** davon gehen an das Entscheidungsmodell. Je Ziel werden höchstens **zwei** Referenzpassagen à 180 Zeichen berücksichtigt. Bei langen Notizen werden relevante Originalpassagen aus dem gesamten Text (maximal 1.400 Zeichen) ausgewählt. Die Analyse läuft **nach manuellem Start** in einem Hintergrund-Thread mit Fortschritt pro Notiz, ohne dass die Oberfläche blockiert.
+2. **Fundstellen und Vorschläge prüfen:** Links eine Inbox-Datei wählen; rechts Originalauszüge, bis zu drei Zielalternativen samt **Modellwerten (keine empirisch gemessenen Trefferquoten)** und die tatsächlich an das Modell übergebenen Referenzpassagen vergleichen. Der vollständige Notiztext lässt sich separat öffnen. Bei mehrdeutigen Zielen wird **kein Ordner vorausgewählt**. Bestätigen, einen anderen vorhandenen Ordner wählen oder zurückstellen. Referenznotizen können optional bevorzugt oder ausgeschlossen werden; danach erneut analysieren.
+3. **Verschiebung vorbereiten und in Obsidian freigeben:** Nach Browser-Bestätigung wird ein vollständiges Vault-Backup als ZIP erstellt und ein Ausführungsplan gespeichert. Die tatsächliche Verschiebung erfolgt **erst** über den Obsidian-Befehl **„Freigegebene Inbox-Verschiebungen anwenden“** mit zweiter ausdrücklicher Bestätigung. Das Plugin übernimmt Verschieben und Aktualisieren interner Links.
+
+Weitere Details: Archiv- und Backlog-Ordner sind bei der **automatischen Vorauswahl** standardmäßig ausgeschlossen, lassen sich aber explizit einbeziehen oder manuell als Ziel auswählen. Bei einer Neuanalyse werden alte Vorschläge und Freigaben der erneut analysierten Notizen zurückgesetzt; Fehler werden pro Notiz angezeigt. Die lokalen Ergebnisse sind unter `.local/vault-state/` **je Vault getrennt** gespeichert. Das Zeitlimit für eine lokale Modellabfrage beträgt 90 Sekunden; bei Verbindungs-/Zeitproblemen wird nicht unkontrolliert weiter angefragt.
+
+**Ohne aktiviertes Obsidian-Plugin und zweite Freigabe werden keine Notizen verschoben.** Die Originaldateien bleiben während Analyse und Prüfung unverändert. Sicherheitsprüfungen umfassen Pfadgrenzen, Hashes, Zielkollisionen und Backup-Prüfung; es werden keine Zielordner angelegt oder Dateien überschrieben.
+
+### Plugin installieren oder aktualisieren
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-obsidian-plugin.ps1 -Force
+```
+
+Standardmäßig liest der Installer den Vault-Pfad aus `config.json` (falls vorhanden), sonst aus `config.example.json`. Soll die Erweiterung in einem **anderen, ausdrücklich gewählten Vault** erscheinen, kann `-VaultPath "C:\Pfad\Zum\Vault"` ergänzt werden. Danach die Erweiterung in Obsidian aktivieren beziehungsweise einmal neu laden. Die lokale Abnahme mit Testnotizen und Link-Aktualisierung ist erfolgt; neue produktive Verschiebungen bleiben trotzdem freigabepflichtig.
+
+## Sicherheit, Qualität und Dokumentation
+
+- Lokale Oberfläche ausschließlich auf `127.0.0.1:8765`. API-Anfragen sind durch ein Sitzungstoken geschützt; Cloud-Zugriffe benötigen zusätzlich das Opt-in.
+- Keine Änderung an Originalnotizen bei Vorschlag, Prüfung oder Zurückstellung. Backups, Schlüssel, lokale Ergebnisse und `config.json` bleiben außerhalb der Git-Versionsverwaltung.
+- Das Projekt verwendet für die Ordnerauswahl `Choice`; `Noul` und `Score` sind weitere Jev-Primitives, werden hier aber nicht für diese Ablageentscheidung benötigt.
+- Für Qualitätsvergleiche mit realistischen Beispielen bleibt wichtig: Ist der korrekte Zielordner überhaupt unter den vorausgewählten Kandidaten? Erst danach die Qualität der Jev-Reihung bewerten. Mehrdeutige Ziele werden bewusst nicht automatisch freigegeben.
+
+**Dokumentation:** [MVP-Spezifikation](docs/MVP-SPEZIFIKATION.md) · [Coding-Agent-Handoff](docs/CODING_AGENT_HANDOFF.md) · [Modellvalidierung](docs/VALIDIERUNG.md) · [Lokaler Start](docs/STARTEN-OHNE-VSCODE.md) · [Textbereinigung](docs/TEXTBEREINIGUNG.md).
+
+**Nicht geplant:** Die früher vorgesehene lesende Outlook-Anbindung ist kein Bestandteil der aktuellen Lösung; der Entwurf bleibt als [optionale Ideenskizze](docs/OUTLOOK.md) dokumentiert.
+
+**Referenzen:** [TypeSafe Console](https://console.typesafe.ai/keys) · [jevos-v4 Release](https://github.com/feder-cr/jev/releases/tag/jevos-v4) · [Obsidian API](https://github.com/obsidianmd/obsidian-api).
