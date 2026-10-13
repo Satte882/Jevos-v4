@@ -43,7 +43,8 @@ def backup_vault(vault: Path, destination: Path) -> dict:
             if archive.testzip() is not None or len(archive.namelist()) != count:
                 raise ValueError("Backup-Integritätsprüfung fehlgeschlagen.")
         os.replace(temporary, destination)
-        sha = hashlib.file_digest(destination.open("rb"), "sha256").hexdigest()
+        with destination.open("rb") as stream:
+            sha = hashlib.file_digest(stream, "sha256").hexdigest()
         return {"path": str(destination), "sha256": sha, "files": count}
     finally:
         temporary.unlink(missing_ok=True)
