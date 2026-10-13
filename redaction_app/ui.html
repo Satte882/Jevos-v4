@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Text bereinigen · Lokale KI-Vorbereitung</title>
+<style>
+:root{color-scheme:dark;font:15px/1.5 system-ui,Segoe UI,sans-serif;color:#e7edf7;background:#11151b}
+*{box-sizing:border-box}body{max-width:1120px;margin:auto;padding:22px 20px 72px}
+header{display:flex;justify-content:space-between;align-items:start;gap:12px}
+h1{font-size:1.6rem;margin:0}h2{font-size:1.08rem;margin:0 0 12px}
+a{color:#a6c5ff}p{margin:9px 0}small,.muted{color:#afbac9}
+section{margin-top:18px;background:#1a212b;border:1px solid #344153;border-radius:12px;padding:18px}
+button{background:#446bb7;color:white;border:1px solid #698dd1;border-radius:8px;padding:9px 13px;cursor:pointer;font:inherit}
+button.secondary{background:#2a3442;border-color:#526076}button:disabled{opacity:.4;cursor:not-allowed}
+textarea{width:100%;min-height:290px;resize:vertical;background:#0e151e;color:#f0f3fa;border:1px solid #566377;border-radius:8px;padding:13px;font:14px/1.5 ui-monospace,Consolas,monospace}
+textarea:focus,button:focus,input:focus{outline:2px solid #93b7fa}
+label{cursor:pointer}.controls{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:12px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}.cols>div{min-width:0}
+.warning{background:#2e2a22;border:1px solid #766038;border-radius:8px;padding:12px}
+#status{margin-top:12px;white-space:pre-wrap}#status.error{color:#ffaca2}
+#summary{color:#b5d4fa}#export-check{accent-color:#86bbf8}
+@media(max-width:780px){.cols{grid-template-columns:1fr}header{display:block}}
+</style>
+</head>
+<body>
+<header>
+<div><h1>Text für externe KI bereinigen</h1><p class="muted">Lokal verarbeiten · Prüfen · Kopieren</p></div>
+<a href="/">← Zur Obsidian Inbox</a>
+</header>
+<section>
+<h2>1 · Text eingeben</h2>
+<p>Text einfügen oder eine TXT-, MD- oder DOCX-Datei auswählen. Eingaben bleiben in dieser lokalen Anwendung; es erfolgt keine Übertragung an Jev oder ein Frontier-LLM.</p>
+<div class="controls"><input id="file" type="file" accept=".txt,.md,.docx,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+<button id="clear" class="secondary">Zurücksetzen</button></div>
+<div class="cols">
+<div><h2 style="margin:16px 0 8px">Original</h2>
+<textarea id="original" spellcheck="false" placeholder="Vertraulichen Text hier eingeben …" aria-label="Originaltext"></textarea></div>
+<div><h2 style="margin:16px 0 8px">Bereinigte Fassung</h2>
+<textarea id="cleaned" spellcheck="false" placeholder="Hier erscheint das bereinigte Ergebnis; du kannst es manuell nachbearbeiten." aria-label="Bereinigter Text"></textarea></div>
+</div>
+<div class="controls"><button id="sanitize">Lokal bereinigen</button>
+<span class="muted" id="counts"></span></div>
+</section>
+<section>
+<h2>2 · Ergebnis überprüfen</h2>
+<div class="warning">
+<strong>Keine Garantie vollständiger Anonymität.</strong>
+<p>Automatische Erkennung übersieht möglicherweise Namen, Geschäftsgeheimnisse oder eindeutige Kombinationen aus Rolle, Ort, Datum und Sachverhalt. Kontrolliere den vollständigen Ausgabetext vor jeder Weitergabe. Zahlen und Datumsangaben bleiben normalerweise erhalten.</p>
+<p>Die Platzhalter sind innerhalb dieses Textes konsistent. Eine Rückübersetzungstabelle wird nicht gespeichert.</p>
+</div>
+<p id="summary" aria-live="polite"></p>
+<div class="controls">
+<label><input type="checkbox" id="reviewed"> Ich habe den vollständigen bereinigten Text kontrolliert und freigegeben.</label>
+</div>
+</section>
+<section>
+<h2>3 · Kopieren oder speichern</h2>
+<div class="controls">
+<button id="copy" disabled>Bereinigten Text kopieren</button>
+<button id="download" class="secondary" disabled>Als TXT speichern</button>
+</div>
+<small>Kein automatischer Versand an ein KI-Modell. Die Bereinigung ist unabhängig von der Jev-/jevos-v4-Auswahl im Inbox-Assistenten.</small>
+<div id="status" role="status" aria-live="polite"></div>
+</section>
+<script>
+"use strict";
+const TOKEN = "__SESSION_TOKEN__";
+const $ = id => document.getElementById(id);
+const original = $("original"), cleaned = $("cleaned");
+const file = $("file"), copy = $("copy"), download = $("download"), review = $("reviewed");
+const status = (text, error=false) => {
+ $("status").textContent=text; $("status").className=error?"error":"";
+};
+const invalidate = () => {review.checked=false; copy.disabled=true; download.disabled=true;};
+const allow = () => {
+ const enabled=review.checked && cleaned.value.trim().length>0;
+ copy.disabled=!enabled;download.disabled=!enabled;
+};
+async function api(path, data){
+ const res=await fetch(path,{method:"POST",headers:{"X-Session-Token":TOKEN,"Content-Type":"application/json"},body:JSON.stringify(data)});
+ const response=await res.json();
+ if(!res.ok)throw new Error(response.error || "Unbekannter lokaler Fehler");
+ return response;
+}
+original.addEventListener("input",()=>{invalidate();cleaned.value="";$("counts").textContent="";$("summary").textContent="";});
+cleaned.addEventListener("input",invalidate);
+review.addEventListener("change",allow);
+$("clear").addEventListener("click",()=>{
+ file.value="";original.value="";cleaned.value="";$("counts").textContent="";$("summary").textContent="";invalidate();status("Zurückgesetzt.");
+});
+file.addEventListener("change",async()=>{
+ try{
+   invalidate();cleaned.value="";$("summary").textContent="";
+   const f=file.files?.[0];if(!f)return;
+   const ext=f.name.split(".").pop().toLowerCase();
+   if(!["txt","md","docx"].includes(ext))throw new Error("Nur TXT, MD und DOCX werden unterstützt.");
+   if(f.size>2_000_000)throw new Error("Datei größer als 2 MB.");
+   if(ext==="docx"){
+     const base64=await new Promise((resolve,reject)=>{
+       const reader=new FileReader();
+       reader.onload=()=>resolve(String(reader.result).split(",")[1]);
+       reader.onerror=()=>reject(new Error("DOCX konnte nicht gelesen werden."));
+       reader.readAsDataURL(f);
+     });
+     const data=await api("/api/docx-text",{filename:f.name,data:base64});
+     original.value=data.text;
+     status("DOCX-Haupttext extrahiert. Text vor der Bereinigung prüfen; Bilder, Kommentare und Metadaten werden nicht exportiert.");
+   }else{
+     original.value=await f.text();
+     if(original.value.length>100_000)throw new Error("Text überschreitet 100.000 Zeichen.");
+     status("Datei lokal eingelesen.");
+   }
+ }catch(err){original.value="";status(err.message,true);}
+});
+$("sanitize").addEventListener("click",async()=>{
+ invalidate();cleaned.value="";
+ $("sanitize").disabled=true;
+ try{
+   const result=await api("/api/redact",{text:original.value});
+   cleaned.value=result.text;
+   $("counts").textContent=result.replacements+" erkannte Fundstellen";
+   const stats=Object.entries(result.categories).map(([name,count])=>name+": "+count).join(" · ");
+   $("summary").textContent=stats || "Keine Treffer erkannt – insbesondere sorgfältig manuell prüfen.";
+   status("Lokal verarbeitet. Bitte den gesamten Ausgabetext kontrollieren.");
+ }catch(err){status(err.message,true);}
+ finally{$("sanitize").disabled=false;}
+});
+copy.addEventListener("click",async()=>{
+ if(copy.disabled)return;
+ try{await navigator.clipboard.writeText(cleaned.value);status("Bereinigter Text in die Zwischenablage kopiert.");}
+ catch(err){status("Kopieren nicht möglich: "+err.message,true);}
+});
+download.addEventListener("click",()=>{
+ if(download.disabled)return;
+ const url=URL.createObjectURL(new Blob([cleaned.value],{type:"text/plain;charset=utf-8"}));
+ const a=document.createElement("a");a.href=url;a.download="bereinigter-text.txt";a.click();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
+ status("Bereinigter Text als TXT bereitgestellt.");
+});
+</script>
+</body></html>

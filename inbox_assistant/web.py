@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import json
 import secrets
 import sys
@@ -10,8 +12,11 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from .service import InboxService
+from redaction_app.core import redact
+from redaction_app.docx import extract_docx
 
 HTML = Path(__file__).with_name("ui.html")
+REDACTION_HTML = Path(__file__).resolve().parent.parent / "redaction_app" / "ui.html"
 
 
 def handler_factory(service: InboxService, token: str):
@@ -40,8 +45,9 @@ def handler_factory(service: InboxService, token: str):
             if not self._valid_host():
                 return self._send(403, {"error": "Ungültiger Host."})
             parsed = urlsplit(self.path)
-            if parsed.path == "/":
-                page = HTML.read_text(encoding="utf-8").replace("__SESSION_TOKEN__", token)
+            if parsed.path in ("/", "/anonymize"):
+                template = HTML if parsed.path == "/" else REDACTION_HTML
+                page = template.read_text(encoding="utf-8").replace("__SESSION_TOKEN__", token)
                 return self._send(200, {}, body=page.encode("utf-8"), mime="text/html; charset=utf-8")
             if not self._token_ok():
                 return self._send(403, {"error": "Session-Token fehlt."})
@@ -68,12 +74,26 @@ def handler_factory(service: InboxService, token: str):
                 return self._send(415, {"error": "Nur JSON erlaubt."})
             try:
                 length = int(self.headers.get("Content-Length", "0"))
-                if not 0 < length <= 16000:
+                allowed_size = 3_000_000 if self.path in ("/api/redact", "/api/docx-text") else 16000
+                if not 0 < length <= allowed_size:
                     raise ValueError("Ungültige Anfragelänge.")
                 payload = json.loads(self.rfile.read(length))
                 if not isinstance(payload, dict):
                     raise ValueError("JSON-Objekt erforderlich.")
-                if self.path == "/api/analyze":
+                if self.path == "/api/redact":
+                    result = redact(payload.get("text"))
+                elif self.path == "/api/docx-text":
+                    if not isinstance(payload.get("filename"), str) or not payload["filename"].lower().endswith(".docx"):
+                        raise ValueError("Nur .docx-Dateien zugelassen.")
+                    raw = payload.get("data")
+                    if not isinstance(raw, str):
+                        raise ValueError("DOCX-Daten fehlen.")
+                    try:
+                        data = base64.b64decode(raw, validate=True)
+                    except (ValueError, binascii.Error) as exc:
+                        raise ValueError("Ungültige DOCX-Kodierung.") from exc
+                    result = {"text": extract_docx(data)}
+                elif self.path == "/api/analyze":
                     result = service.analyze(
                         payload.get("provider", ""),
                         cloud_consent=payload.get("cloud_consent") is True,

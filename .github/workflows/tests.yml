@@ -17,6 +17,8 @@ jobs:
         run: python -m compileall -q inbox_assistant jevos_local
       - name: Validate Obsidian plugin JavaScript
         run: node --check obsidian-plugin/main.js
+      - name: Validate redaction view JavaScript
+        run: node tests/test_redaction_ui.cjs
       - name: Run synthetic Obsidian bridge preflight
         run: node tests/test_plugin.cjs
       - name: Run unittest (no model download)
