@@ -38,16 +38,20 @@ class CliTests(unittest.TestCase):
 
     @patch("jevos_local.cli.JevosClient")
     def test_demo(self, client_type):
-        client_type.return_value.classify.return_value = {
-            "task": 0.88, "idea": 0.05, "decision": 0.1
+        client_type.return_value.ask.return_value = {
+            "task": {"type": "noul", "noul": 0.88},
+            "idea": {"type": "noul", "noul": 0.05},
+            "decision": {"type": "noul", "noul": 0.1},
         }
         self.assertEqual(main(["--provider", "local", "demo", "--mode", "noul"]), 0)
         self.assertEqual(client_type.return_value.ask.call_count, 6)
 
     @patch("jevos_local.cli.JevosClient")
     def test_vault_reads_without_write(self, client_type):
-        client_type.return_value.classify.return_value = {
-            "task": 0.8, "idea": 0.1, "decision": 0.2
+        client_type.return_value.ask.return_value = {
+            "task": {"type": "noul", "noul": 0.8},
+            "idea": {"type": "noul", "noul": 0.1},
+            "decision": {"type": "noul", "noul": 0.2},
         }
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
