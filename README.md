@@ -4,6 +4,20 @@
 
 **Status:** GitHub-Unit-Tests werden automatisiert ausgeführt. **Windows-Modellstart, echte Jev-API-Abfragen, Obsidian-Plugin und Link-Aktualisierung müssen lokal getestet werden.** Vor produktiven Verschiebungen einen synthetischen Test-Vault verwenden.
 
+## Neu: Text für externe KI bereinigen
+
+Unter `http://127.0.0.1:8765/anonymize` gibt es eine **eigenständige lokale Textbereinigung**. Text einfügen oder TXT/MD/DOCX importieren, mit deutschem spaCy-NER und Erkennungsregeln bereinigen, Ergebnis manuell kontrollieren und als reinen Text kopieren oder speichern. **Kein Frontier-LLM, Jev oder TypeSafe wird dazu kontaktiert.** Der Obsidian-Inbox-Assistent bleibt unverändert.
+
+**Einmalig spaCy und das lokale deutsche Modell installieren:**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-redaction.ps1
+```
+
+Danach `scripts/start-ui.ps1` neu starten. Details, Grenzen und lokales Abnahmeverfahren: [Textbereinigung – Anleitung](docs/TEXTBEREINIGUNG.md).
+
+**Datenschutz-Hinweis:** Automatisches Ersetzen identifizierender Stellen ist keine nachgewiesene vollständige Anonymisierung. Vor der Weitergabe des Textes an ChatGPT, Claude oder andere Cloud-Modelle ist eine manuelle Prüfung erforderlich.
+
 ## Vorhandene Pfade (bereits festgelegt)
 
 | Verwendung | Pfad |
