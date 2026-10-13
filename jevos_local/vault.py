@@ -11,7 +11,10 @@ MAX_NOTES = 200
 
 
 def vault_path(value: str | Path) -> Path:
-    path = Path(value).expanduser().resolve(strict=True)
+    try:
+        path = Path(value).expanduser().resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ValueError("Obsidian-Vault-Pfad nicht gefunden oder nicht zugreifbar.") from exc
     if not path.is_dir():
         raise ValueError("Der Obsidian-Vault-Pfad ist kein Ordner.")
     return path
@@ -21,6 +24,7 @@ def iter_notes(vault: Path, limit: int = 20) -> Iterator[tuple[str, str]]:
     """Ergibt (relativer Pfad, Text). Kein Lesen außerhalb des Vaults."""
     if not 1 <= limit <= MAX_NOTES:
         raise ValueError(f"--limit muss zwischen 1 und {MAX_NOTES} liegen.")
+    vault = vault.resolve()
     count = 0
     for base, dirs, filenames in os.walk(vault, followlinks=False):
         current = Path(base)
