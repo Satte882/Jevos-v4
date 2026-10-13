@@ -17,6 +17,8 @@ from redaction_app.docx import extract_docx
 
 HTML = Path(__file__).with_name("ui.html")
 REDACTION_HTML = Path(__file__).resolve().parent.parent / "redaction_app" / "ui.html"
+UI_CSS = Path(__file__).with_name("assets") / "ui.css"
+FAVICON = Path(__file__).with_name("assets") / "favicon.svg"
 
 
 def handler_factory(service: InboxService, token: str):
@@ -36,7 +38,7 @@ def handler_factory(service: InboxService, token: str):
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'")
+            self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'")
             self.send_header("Content-Length", str(len(content)))
             self.end_headers()
             self.wfile.write(content)
@@ -45,6 +47,10 @@ def handler_factory(service: InboxService, token: str):
             if not self._valid_host():
                 return self._send(403, {"error": "Ungültiger Host."})
             parsed = urlsplit(self.path)
+            if parsed.path == "/assets/ui.css":
+                return self._send(200, {}, body=UI_CSS.read_bytes(), mime="text/css; charset=utf-8")
+            if parsed.path == "/favicon.svg":
+                return self._send(200, {}, body=FAVICON.read_bytes(), mime="image/svg+xml")
             if parsed.path in ("/", "/anonymize"):
                 template = HTML if parsed.path == "/" else REDACTION_HTML
                 page = template.read_text(encoding="utf-8").replace("__SESSION_TOKEN__", token)
