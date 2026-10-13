@@ -1,71 +1,93 @@
-# Jevos-v4 – lokale KI-Entscheidungen unter Windows
+# Jev vs. jevos-v4 – Windows-Experiment
 
-Kleines privates Experiment: **Obsidian-Notizen nur lesend** untersuchen und mit `jevos-v4` drei Ja/Nein-Fragen beantworten: **Aufgabe**, **Idee**, **offene Entscheidung**. Läuft lokal auf der CPU, ohne Cloud-API, Python-Pakete oder GPU.
+Dieses private Experiment vergleicht **zwei unterschiedliche Modelle mit dem gleichen Entscheidungsschema**:
 
-> **Abgrenzung:** Dieses Repository ist **nicht** das originale Jev-Modell. Es nutzt das unabhängig entwickelte Open-Source-Projekt [feder-cr/jev](https://github.com/feder-cr/jev). Die proprietäre Jev-API wird nur lokal nachgebildet. Jevos-v4 ist für englische Eingaben ausgelegt; deutsche Obsidian-Notizen sind ein **Experiment**, keine zugesicherte Funktion. Wahrscheinlichkeiten sind **keine kalibrierten Gewissheiten**.
+- **Jev (Cloud)** – offizielles Modell von [TypeSafe AI](https://typesafe.ai/), über den API-Key aus [console.typesafe.ai/keys](https://console.typesafe.ai/keys). Texte werden **an TypeSafe übertragen** und Anfragen können kostenpflichtig sein.
+- **jevos-v4 (lokal)** – unabhängiges Open-Source-Projekt [feder-cr/jev](https://github.com/feder-cr/jev), ohne Cloud-Anfrage, CPU-tauglich. Nicht mit dem originalen Jev-Modell verwechseln.
 
-## Windows-Schnellstart (PowerShell)
+**Explizite Wahl:** Pro Aufruf läuft **entweder** `--provider local` **oder** `--provider jev`. Es gibt keine automatische Auswahl, keinen Parallelbetrieb, keinen stillen Fallback.
 
-Voraussetzungen: **Windows 11 x64**, [Git](https://git-scm.com/download/win) und [Python 3.11+](https://www.python.org/downloads/windows/) (Befehl `py`). Installiert wird das offizielle Release vom **4. Oktober 2026**. Rund 650 MB Download, Modell und Binary bleiben in `.local/` (nicht in Git).
+## Schnellstart unter Windows 11
+
+Benötigt: [Git](https://git-scm.com/download/win) und [Python 3.11+](https://www.python.org/downloads/windows/) mit dem Befehl `py -3`. Keine zusätzlichen Python-Pakete.
 
 ```powershell
 git clone https://github.com/Satte882/Jevos-v4.git
 cd Jevos-v4
-py -3 -m venv .venv
+powershell -ExecutionPolicy Bypass -File .\scripts\run.ps1
+```
 
-# 1. Einmalig: offizielles Windows-Binary + Modell laden; SHA-256 prüfen
+Im Menü **1** für Jevos lokal, **2** für Jev Cloud mit sechs synthetischen englischen Notizen. Optionen **3** und **4** lesen Obsidian-Notizen (Option 4 lädt deren Inhalt zur TypeSafe-API hoch und verlangt eine **ausdrückliche Bestätigung**). Kein Anwendertext wird ins Repository geschrieben.
+
+### Für Jevos lokal – vorher einmalig installieren
+
+Das offizielle Windows-Binary + OpenVINO-Modell (~650 MB) werden in den ignorierten Ordner `.local/jev` geladen, **SHA-256** wird gegen veröffentlichte Release-Werte geprüft:
+
+```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\install-jev.ps1
-
-# 2. Lokalen Jevos-Server starten (dieses Fenster geöffnet lassen)
 powershell -ExecutionPolicy Bypass -File .\scripts\start-jev.ps1
 ```
 
-**Ein zweites PowerShell-Fenster** im selben Repository öffnen:
+Das Serverfenster geöffnet lassen. Ein zweites PowerShell-Fenster im Projektverzeichnis öffnen und das Auswahlmenü starten (`scripts/run.ps1`). Der lokale Server lauscht nur auf `127.0.0.1:8017`.
+
+### Für Jev Cloud – **keine Modellinstallation**
+
+Menü **2** auswählen. Das Skript fragt den API-Key **verdeckt** ab und setzt ihn nur während dieses Prozesses als Umgebungsvariable `TYPESAFE_API_KEY`. API-Key **niemals** hier in den Chat oder in GitHub einfügen.
+
+Alternativ für fortgeschrittene Nutzer den Schlüssel vorübergehend im aktuellen PowerShell-Prozess setzen (dadurch ist er im Befehlstext sichtbar; für private Keys deshalb **das Menü bevorzugen**) und explizit starten:
 
 ```powershell
-.\.venv\Scripts\python.exe -m jevos_local health
-.\.venv\Scripts\python.exe -m jevos_local demo
+py -3 -m jevos_local --provider jev demo --mode all
 ```
 
-**Eigene Obsidian-Notizen testen** (Pfad durch den Speicherort deines Vaults ersetzen; z. B. über Obsidian → Einstellungen → Dateien und Links nachsehen):
+Offizieller Cloud-Endpoint: `https://api.typesafe.ai/v1/systemone`. Es werden **ausschließlich** TypeSafe und kein unabhängiger Drittanbieter-Proxy angesprochen. Für den Cloud-Gesundheitscheck wird `GET /v1/models` verwendet.
+
+## Unterstützte KI-Funktionen
+
+| Modus | Bedeutung | Ergebnis |
+|---|---|---|
+| `noul` | Drei Ja/Nein-Fragen: Aufgabe, Idee, offene Entscheidung | Jeweils eine Wahrscheinlichkeit von 0–1 |
+| `choice` | Hauptkategorie wählen: Aufgabe, Idee, Entscheidung, Information | Kategorie + Verteilung + Konfidenz |
+| `score` | Dringlichkeit auf Skala 0–3 bewerten | Erwarteter numerischer Wert + Konfidenz |
+| `all` | Alle fünf Fragen in **einem** API-Aufruf pro Notiz | Kombinierte Ausgabe |
+
+Beide Provider erhalten **identische Fragen, Kriterien und Testtexte**. Ein Score ist keine automatisch richtige Priorität; Wahrscheinlichkeiten sind keine Garantie. Besonders deutschsprachige Texte müssen anhand eigener Beispiele geprüft werden. Jevos-v4 hat einen anderen Trainingsstand und andere Modellgüte als Jev.
+
+## CLI-Beispiele für gezielte Tests
 
 ```powershell
-.\.venv\Scripts\python.exe -m jevos_local vault --vault "C:\Users\DEINNAME\Documents\Obsidian\MeinVault" --limit 20 --report "reports\ergebnis.csv"
+# Prüfung des jeweiligen Anbieters
+py -3 -m jevos_local --provider local health
+py -3 -m jevos_local --provider jev health
+
+# Für einen fairen späteren Vergleich: einzeln nacheinander starten
+py -3 -m jevos_local --provider local demo --mode all
+py -3 -m jevos_local --provider jev demo --mode all
+
+# Obsidian: nur lesen, nicht schreiben (Vault-Pfad ersetzen!)
+py -3 -m jevos_local --provider local vault --vault "C:\Pfad\MeinVault" --limit 20 --mode all
+
+# Cloud nur bei BEWUSSTER Freigabe der echten Notizen:
+py -3 -m jevos_local --provider jev vault --vault "C:\Pfad\MeinVault" --limit 20 --mode all --allow-cloud-vault
 ```
 
-Angezeigt werden nur **Dateipfad** und die drei **Ja-Wahrscheinlichkeiten**. Bei `--report` schreibt das Programm **ausschließlich** eine lokale CSV mit Dateipfaden und Wahrscheinlichkeiten außerhalb des Vaults; es kopiert **keine Notizinhalte** in diese CSV. Ohne `--report` erfolgt keine Ergebnisspeicherung. Das Tool ändert **niemals** die Notizen.
+Optional `--report "reports\ergebnis.csv"` legt eine lokale CSV mit **Dateipfaden, Kategorien und Scores ohne Notizinhalte** an. `reports/` ist von Git ausgeschlossen. Die Skripte schreiben **niemals** in einen Obsidian-Vault, und CSV-Dateien **im Vault** werden blockiert.
 
-## Befehle
+## Sicherheit und Grenzen
 
-| Befehl | Funktion |
-|---|---|
-| `python -m jevos_local health` | Erreichbarkeit des lokalen Servers prüfen |
-| `python -m jevos_local demo` | Sechs synthetische englische Beispielsätze klassifizieren |
-| `python -m jevos_local vault --vault "C:\Pfad\Vault" --limit 20` | Bis zu 20 Markdown-Notizen nur lesend prüfen |
-| `... --threshold 0.8` | Kennzeichnung „Ja“ erst ab 80 % (Standard: 75 %) |
-| `... --report "reports\ergebnis.csv"` | Nur Pfad, Scores und Ja/Nein als lokale CSV speichern |
+- Beim lokalen Provider gehen Daten ausschließlich über `localhost` zum Modell. Beim Cloud-Provider **werden die vollständigen jeweils ausgewählten Textausschnitte** an TypeSafe übermittelt.
+- Obsidian: maximal 20 Notizen standardmäßig (einstellbar bis 200), maximal 64 KiB Dateigröße und 12.000 Zeichen pro Note; versteckte Ordner, Symlinks und andere Dateien als Markdown werden ignoriert.
+- API-Key bleibt ausschließlich in der PowerShell-Prozessumgebung; keine `.env`, kein Key im Repository. Zusätzliche Betriebssystem-/Prozessschutzmaßnahmen sind davon unberührt.
+- Keine automatische Weiterleitung, kein Outlook-Zugriff, keine E-Mail-Aktionen. [Outlook bleibt Phase 2](https://github.com/Satte882/Jevos-v4/issues/1).
+- Bei `--provider jev` wird ein fehlender API-Key als Fehler gemeldet, **niemals** auf den lokalen Provider zurückgefallen.
+- Der erste echte Modellstart unter Windows und die Live-Authentifizierung bei TypeSafe müssen noch auf deinem Rechner getestet werden.
 
-Der Server ist auf `http://127.0.0.1:8017` begrenzt. `JEV_API_KEY` kann optional als Umgebungsvariable für einen lokalen Server mit Bearer-Authentifizierung gesetzt werden. Kein externer Dienst wird aus Python aufgerufen.
-
-## Grenzen und Datenschutz
-
-- **Nur lesen:** Es werden `.md`-Dateien gelesen, jedoch keine geändert, verschoben oder umbenannt. Versteckte Ordner (`.obsidian`, `.git`), symbolische Links und Dateien über 64 KiB werden ignoriert.
-- **Lokale Daten:** Dateiinhalte verlassen bei Standardkonfiguration den Rechner nicht; sie werden ausschließlich an `127.0.0.1` gesendet. Die Modelldateien werden einmalig aus dem offiziellen Release heruntergeladen.
-- **Kleine Testmenge:** Standardmäßig 20 Notizen, maximal 200. Pro Datei werden höchstens 12.000 Zeichen klassifiziert.
-- **Fehlklassifikation möglich:** Drei unabhängige Ja/Nein-Fragen können gleichzeitig „Ja“ ergeben oder alle „Nein“. Ergebnisse immer anhand selbst markierter Beispiele bewerten.
-- **Sicherheitsgrenze:** Obsidian-Vaults und vertrauliche Daten dürfen **nicht** in dieses öffentliche GitHub-Repository kopiert werden. `.gitignore` schützt nur typische Verzeichnisse, nicht beliebige, versehentlich eingecheckte Ordner.
-- **Upstream-Code:** Die Downloads werden über offizielle Release-URLs bezogen; das Installationsskript prüft ihre für dieses Release veröffentlichten SHA-256-Hashes. Keine automatische Aktualisierung und kein automatischer Start im Hintergrund.
-
-## Nächste Ausbaustufe: Outlook
-
-Eine **lesende** Outlook-Anbindung ist bewusst noch nicht enthalten, weil die Verbindung von **klassischem Outlook** und **neuem Outlook/Microsoft 365** unterschiedlich ist. Im Dokument [docs/OUTLOOK.md](docs/OUTLOOK.md) stehen Anforderungen und sichere Umsetzungsschritte. **Keine Anmeldung, Berechtigung oder Mail-Aktion** wird ohne separate Einrichtung ausgeführt.
-
-## Testen
+## Tests
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+py -3 -m unittest discover -s tests -v
 ```
 
-Ohne Modell ausführbare Tests nutzen lokale Mock-Antworten; der reale Windows-Modellstart muss auf deinem Rechner geprüft werden.
+Die GitHub Actions prüfen Python unter Windows und Linux sowie die Syntax der PowerShell-Skripte, **ohne ein Modell herunterzuladen oder einen API-Key zu benötigen**.
 
-**Quellen:** [Release jevos-v4](https://github.com/feder-cr/jev/releases/tag/jevos-v4) · [API / README des Entwicklers](https://github.com/feder-cr/jev#api).
+Quellen: [offizielle TypeSafe OpenAPI-Spezifikation](https://api.typesafe.ai/openapi.json) · [Open-Source-Release jevos-v4](https://github.com/feder-cr/jev/releases/tag/jevos-v4) · [Herstellerdokumentation](https://github.com/feder-cr/jev#api).
