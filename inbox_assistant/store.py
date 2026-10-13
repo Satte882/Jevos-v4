@@ -9,12 +9,12 @@ from pathlib import Path
 
 def load(path: Path) -> dict:
     if not path.exists():
-        return {"analyses": {}, "decisions": {}, "excluded_references": [], "pinned_references": {}}
+        return {"analyses": {}, "decisions": {}, "errors": {}, "excluded_references": [], "pinned_references": {}}
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError("Ungültiger lokaler Status.")
     for key, default in (("analyses", {}), ("decisions", {}),
-                         ("excluded_references", []), ("pinned_references", {})):
+                         ("errors", {}), ("excluded_references", []), ("pinned_references", {})):
         data.setdefault(key, default)
     return data
 

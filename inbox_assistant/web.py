@@ -100,10 +100,11 @@ def handler_factory(service: InboxService, token: str):
                         raise ValueError("Ungültige DOCX-Kodierung.") from exc
                     result = {"text": extract_docx(data)}
                 elif self.path == "/api/analyze":
-                    result = service.analyze(
+                    result = service.start_analysis(
                         payload.get("provider", ""),
                         cloud_consent=payload.get("cloud_consent") is True,
                         limit=payload.get("limit", 20),
+                        include_archives=payload.get("include_archives") is True,
                     )
                 elif self.path == "/api/decide":
                     result = service.decide(payload.get("source", ""),

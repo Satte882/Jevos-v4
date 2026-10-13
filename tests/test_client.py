@@ -50,6 +50,11 @@ class ClientTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             JevosClient().classify("   ")
 
+    @patch("jevos_local.client.urlopen", side_effect=TimeoutError("test timeout"))
+    def test_timeout_is_distinguished_from_connection_failure(self, mock_open):
+        with self.assertRaisesRegex(JevosError, "Zeitlimit.*30 Sekunden"):
+            JevosClient().health()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -61,7 +61,11 @@ class JevosClient:
         try:
             with urlopen(req, timeout=self.timeout) as res:
                 content = res.read()
-        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        except HTTPError as exc:
+            raise JevosError(f"Lokaler Jevos-Server hat die Anfrage abgelehnt (HTTP {exc.code}).") from exc
+        except TimeoutError as exc:
+            raise JevosError(f"Zeitlimit: Das lokale Modell hat nach {self.timeout} Sekunden nicht geantwortet.") from exc
+        except (URLError, OSError) as exc:
             raise JevosError(
                 "Lokaler Jevos-Server nicht erreichbar oder Anfrage abgelehnt. "
                 "Prüfe scripts/start-jev.ps1 und http://127.0.0.1:8017/health."

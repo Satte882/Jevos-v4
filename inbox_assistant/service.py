@@ -4,11 +4,12 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
+import time
 from pathlib import Path
 
 from jevos_local.client import JevosClient, TypeSafeClient, JevosError
 from .bridge import bridge_status, stage_moves
-from .index import VaultIndex, file_sha, safe_path
+from .index import VaultIndex, file_sha, safe_path, relevant_excerpt, content_text
 from .store import load, atomic_json
 
 DEFAULT_CONFIG = Path(__file__).resolve().parent.parent / "config.example.json"
@@ -23,18 +24,28 @@ class InboxService:
         if self.repo.resolve().is_relative_to(self.index.root):
             raise ValueError("Das Entwicklungsrepo muss außerhalb des Obsidian-Vaults liegen.")
         self.workdir = self.repo / ".local"
-        self.state_path = self.workdir / "assistant-state.json"
+        vault_id = hashlib.sha256(str(self.index.root).casefold().encode()).hexdigest()[:16]
+        self.state_path = self.workdir / "vault-state" / (vault_id + ".json")
         self.bridge_dir = self.workdir / "bridge"
         self.backup_dir = self.workdir / "backups"
         self.state = load(self.state_path)
         self.lock = threading.RLock()
+        self.busy = False
+        self.job = {"status": "idle"}
+        self.last_scan = 0
+
+    def _bridge_status(self):
+        pending = self.bridge_dir / "pending.json"
+        if pending.exists() and load(pending).get("vault") != str(self.index.root):
+            return {"status": "none"}
+        return bridge_status(self.bridge_dir)
 
     def save(self):
         atomic_json(self.state_path, self.state)
 
     def _reconcile(self):
         """Abgeschlossene Obsidian-Ergebnisse nur einmal übernehmen."""
-        bridge = bridge_status(self.bridge_dir)
+        bridge = self._bridge_status()
         if bridge["status"] == "finished" and self.state.get("last_reconciled") != bridge["batch_id"]:
             for row in bridge["results"]:
                 source = row.get("source")
@@ -46,14 +57,17 @@ class InboxService:
 
     def _require_idle(self):
         self._reconcile()
+        if self.busy:
+            raise ValueError("Die Analyse läuft noch; bitte zuerst abschließen lassen.")
         if bridge_status(self.bridge_dir)["status"] == "awaiting-obsidian":
             raise ValueError("Ein Verschiebungsstapel wartet auf Obsidian; zuerst abschließen.")
 
     def overview(self) -> dict:
         with self.lock:
             self._reconcile()
-            self.index.reload()
-            current = {n.source: n for n in self.index.inbox_notes}
+            if not self.busy and time.monotonic() - self.last_scan > 5:
+                self.index.reload()
+                self.last_scan = time.monotonic()
             rows = []
             for note in self.index.inbox_notes:
                 analysis = self.state["analyses"].get(note.source)
@@ -62,11 +76,19 @@ class InboxService:
                 decision = self.state["decisions"].get(note.source)
                 if decision and decision.get("sha256") != note.sha256:
                     decision = None
+                error = self.state.get("errors", {}).get(note.source)
+                if error and error.get("sha256") != note.sha256:
+                    error = None
                 rows.append({"source": note.source, "sha256": note.sha256,
+                             "title": note.title,
+                             "preview": relevant_excerpt(note.text, note.title, 1800),
+                             "characters": len(note.text),
+                             "error": error,
                              "analysis": analysis, "decision": decision})
             return {"rows": rows, "folders": self.index.folders,
                     "inbox": self.index.inbox_rel, "vault": str(self.index.root),
-                    "bridge": bridge_status(self.bridge_dir),
+                    "bridge": self._bridge_status(), "job": dict(self.job),
+                    "include_archives": self.state.get("include_archives", False),
                     "provider": ["local", "jev"]}
 
     def note(self, source: str) -> str:
@@ -74,16 +96,18 @@ class InboxService:
             return self._get_note(source).text
 
     def _get_note(self, source: str):
-        self.index.reload()
-        note = next((n for n in self.index.inbox_notes if n.source == source), None)
+        file = safe_path(self.index.root, source)
+        if file.parent != self.index.inbox or file.name.startswith(".") or not file.is_file():
+            raise ValueError("Notiz nicht mehr in der Inbox.")
+        note = self.index._note(file)
         if note is None:
             raise ValueError("Notiz nicht mehr in der Inbox.")
-        safe_path(self.index.root, note.source)
         return note
 
     def references(self, folder: str) -> list[dict]:
         with self.lock:
-            self.index.reload()
+            if not self.busy:
+                self.index.reload()
             return self.index.references_for_ui(folder, self.state)
 
     def reference_action(self, folder: str, source: str, action: str) -> dict:
@@ -114,39 +138,89 @@ class InboxService:
             # Korrekturen sollen sichtbar neue Vorschläge erzeugen.
             self.state["analyses"] = {}
             self.state["decisions"] = {}
+            self.state["errors"] = {}
             self.save()
             return {"ok": True, "references": self.index.references_for_ui(folder, self.state)}
 
-    def analyze(self, provider: str, *, cloud_consent: bool = False, limit: int = 20) -> dict:
+    def _validate_analysis(self, provider, cloud_consent, limit):
+        if provider not in ("local", "jev"):
+            raise ValueError("Provider muss explizit local oder jev sein.")
+        if provider == "jev" and not cloud_consent:
+            raise ValueError("Cloud-Übertragung muss ausdrücklich freigegeben werden.")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+            raise ValueError("Bitte 1–50 Notizen auswählen.")
+
+    def start_analysis(self, provider, *, cloud_consent=False, limit=20, include_archives=False):
         with self.lock:
+            self._validate_analysis(provider, cloud_consent, limit)
             self._require_idle()
-            if provider not in ("local", "jev"):
-                raise ValueError("Provider muss explizit local oder jev sein.")
-            if provider == "jev" and not cloud_consent:
-                raise ValueError("Cloud-Übertragung muss ausdrücklich freigegeben werden.")
-            if not 1 <= limit <= 50:
-                raise ValueError("Bitte 1–50 Notizen auswählen.")
-            client = JevosClient() if provider == "local" else TypeSafeClient()
-            self.index.reload()
-            results = []
-            errors = []
-            for note in self.index.inbox_notes[:limit]:
+            self.busy = True
+            self.job = {"status": "running", "completed": 0, "total": 0, "current": "Inbox wird gelesen"}
+        def worker():
+            try:
+                self.analyze(provider, cloud_consent=cloud_consent, limit=limit,
+                             include_archives=include_archives, _reserved=True)
+            except Exception as exc:
+                with self.lock:
+                    self.job = {"status": "failed", "error": str(exc)}
+                    self.busy = False
+        self.analysis_thread = threading.Thread(target=worker, daemon=True)
+        self.analysis_thread.start()
+        return {"started": True}
+
+    def analyze(self, provider: str, *, cloud_consent: bool = False, limit: int = 20,
+                include_archives: bool = False, _reserved: bool = False) -> dict:
+        with self.lock:
+            self._validate_analysis(provider, cloud_consent, limit)
+            if not _reserved:
+                self._require_idle()
+                self.busy = True
+                self.job = {"status": "running", "completed": 0, "total": 0}
+        results, errors = [], []
+        try:
+            with self.lock:
+                self.index.reload()
+                self.last_scan = time.monotonic()
+                notes = list(self.index.inbox_notes[:limit])
+                self.state["include_archives"] = include_archives
+                self.state.setdefault("errors", {})
+                for note in notes:
+                    self.state["analyses"].pop(note.source, None)
+                    self.state["decisions"].pop(note.source, None)
+                    self.state["errors"].pop(note.source, None)
+                self.save()
+                self.job.update(total=len(notes))
+            client = JevosClient(timeout=90) if provider == "local" else TypeSafeClient()
+            unavailable = None
+            for note in notes:
+                started = time.monotonic()
+                with self.lock:
+                    self.job["current"] = note.title
                 candidates = self.index.candidates(note, self.state)
-                if not candidates:
-                    errors.append({"source": note.source, "error": "Keine Zielordner vorhanden."})
-                    continue
+                # Bounded request: five folders and two short, relevant passages each.
+                candidates = candidates[:5]
                 criteria = {}
+                evidence = []
                 for i, candidate in enumerate(candidates, 1):
+                    sent_refs = [{"source": r["source"], "title": r["title"],
+                                  "snippet": r["model_snippet"]}
+                                 for r in candidate["references"][:2]]
+                    evidence.append({"folder": candidate["folder"], "match": candidate["match"],
+                                     "references": sent_refs})
                     examples = "; ".join(
-                        f"{r['source']}: {r['snippet'][:240]}"
-                        for r in candidate["references"][:2]
+                        f"{r['title'][:70]}: {r['snippet']}" for r in sent_refs
                     )
-                    criteria[f"f{i}"] = f"Existing folder: {candidate['folder']}. Example notes: {examples}"
+                    criteria[f"f{i}"] = f"Folder: {candidate['folder']}. Examples: {examples}"
                 criteria["none"] = "None of the available folders fits the note reasonably well."
                 prompt = ("Choose the BEST existing destination folder for this Obsidian note. "
                           "Consider the topic and the examples; choose none if no good fit.")
-                context = f"Filename: {note.source}\nNote content:\n{note.text}"
+                excerpt = relevant_excerpt(note.text, note.title, 1400)
+                context = f"Title: {note.title}\nSelected passages:\n{excerpt}"
                 try:
+                    if unavailable:
+                        raise JevosError("Nicht abgefragt: " + unavailable)
+                    if not candidates:
+                        raise ValueError("Keine geeigneten Zielordner vorhanden. Archivziele bei Bedarf einbeziehen.")
                     answer = client.ask(
                         context, {"destination": {"type": "choice", "instructions": prompt,
                                                  "criteria": criteria}}
@@ -174,19 +248,40 @@ class InboxService:
                         "alternatives": ranked[:3], "manual_review": uncertain,
                         "model_confidence": answer.get("confidence"),
                         "reference_sources": sorted({
-                            r["source"] for c in candidates for r in c["references"]}),
+                            r["source"] for c in evidence for r in c["references"]}),
+                        "evidence": evidence, "input_excerpt": excerpt,
+                        "input_characters": len(excerpt), "note_characters": len(note.text),
+                        "excerpted": len(content_text(note.text)) > len(excerpt),
+                        "elapsed_seconds": round(time.monotonic() - started, 2),
                         "candidate_folders": [c["folder"] for c in candidates],
                     }
-                    self.state["analyses"][note.source] = result
-                    # Bei erneuter Analyse keine alte Freigabe übernehmen.
-                    self.state["decisions"].pop(note.source, None)
-                    self.save()
+                    with self.lock:
+                        self.state["analyses"][note.source] = result
+                        self.save()
                     results.append({"source": note.source, "analysis": result})
                 except (JevosError, KeyError, ValueError) as exc:
-                    errors.append({"source": note.source, "error": str(exc)})
+                    error = {"source": note.source, "error": str(exc), "sha256": note.sha256,
+                             "elapsed_seconds": round(time.monotonic() - started, 2)}
+                    errors.append(error)
+                    with self.lock:
+                        self.state["errors"][note.source] = error
+                        self.save()
+                    if isinstance(exc, JevosError) and isinstance(exc.__cause__, (TimeoutError, OSError)):
+                        unavailable = str(exc)
+                with self.lock:
+                    self.job["completed"] += 1
+            with self.lock:
+                self.job.update(status="finished", successful=len(results), errors=len(errors), current=None)
             return {"provider": provider, "results": results, "errors": errors,
                     "total": len(results), "review_needed": sum(
                         r["analysis"]["manual_review"] for r in results)}
+        except Exception as exc:
+            with self.lock:
+                self.job = {"status": "failed", "error": str(exc)}
+            raise
+        finally:
+            with self.lock:
+                self.busy = False
 
     def decide(self, source: str, status: str, destination: str | None = None) -> dict:
         with self.lock:

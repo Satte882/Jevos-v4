@@ -7,17 +7,18 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="/assets/ui.css">
 </head>
-<body>
+<body class="inbox-app">
 <header class="app-header">
   <div class="header-title"><h1>Obsidian Inbox-Assistent</h1><div class="muted">Analysieren → Prüfen → in Obsidian verschieben</div></div>
   <a class="view-switch" href="/anonymize" aria-label="Text für externe KI bereinigen">Text bereinigen <span aria-hidden="true">↗</span></a>
   <button id="refresh" class="secondary">Ansicht aktualisieren</button>
 </header>
+<div class="vault-banner"><div><span class="eyebrow">Aktiver Vault</span><strong id="vault-name">Wird geladen…</strong></div><div class="vault-path" id="vault-path"></div><div class="muted" id="inbox-path"></div></div>
 <main class="workspace">
 <div class="workspace-config">
 <section>
   <h2>1 · Inbox analysieren</h2>
-  <p class="technology"><strong>Hier arbeitet Jev (System-One-KI):</strong> Das Modell schlägt den passenden Ordner vor.</p>
+  <p class="technology"><strong>Hier arbeitet Jev (System-One-KI):</strong> Prüfe die Vorschläge anhand deiner Notizen und der Referenzpassagen.</p>
   <fieldset class="provider-fieldset"><legend>Entscheidungsmodell</legend>
     <span class="tech-option" data-provider-option="local">
       <label><input type="radio" name="provider" value="local" checked> <strong>jevos-v4 · lokal</strong></label>
@@ -36,6 +37,8 @@
   </div>
   <div class="line"><label>Maximale Notizen: <select id="limit"><option>5</option><option selected>20</option><option>50</option></select></label>
     <button id="analyze">Vorschläge berechnen</button></div>
+  <label class="archive-toggle"><input type="checkbox" id="include-archives"> Archiv- und Backlog-Ordner als Vorschlagsziele einbeziehen</label>
+  <div id="analysis-progress" role="status" aria-live="polite"></div>
   <details class="quiet-details"><summary>Hinweis zur erneuten Analyse</summary><p>Bei einer erneuten Analyse werden bestehende Freigaben für diese Notizen zurückgesetzt.</p></details>
 </section>
 <section class="reference-section">
@@ -51,7 +54,7 @@
 <section>
   <h2>2 · Vorschläge prüfen</h2>
   <div id="overview" class="muted"></div>
-  <div id="notes"></div>
+  <div class="review-workspace"><nav id="notes" aria-label="Inbox-Notizen"></nav><article id="note-review" aria-live="polite"></article></div>
 </section>
 <section>
   <h2>3 · Verschiebung vorbereiten</h2>
@@ -67,6 +70,9 @@
 "use strict";
 const TOKEN = "__SESSION_TOKEN__";
 let state = null;
+let selectedSource = null;
+let pollTimer = null;
+let previousJob = "idle";
 const $ = id => document.getElementById(id);
 document.querySelectorAll("[data-info-target]").forEach(infoButton => {
   infoButton.addEventListener("click", () => {
@@ -117,15 +123,28 @@ function options(select, values, selected) {
 async function refresh() {
   state = await api("/api/state");
   const rows = state.rows;
+  $("vault-name").textContent = state.vault.split(/[\\/]/).pop();
+  $("vault-path").textContent = state.vault;
+  $("inbox-path").textContent = "Inbox: " + state.inbox;
+  const running = state.job?.status === "running";
+  $("analyze").disabled = running;
+  $("include-archives").disabled = running;
+  $("ref-load").disabled = running;
+  $("analysis-progress").textContent = running ? "Analyse läuft · " + state.job.completed + " / " + state.job.total + " · " + (state.job.current || "") : state.job?.status === "failed" ? state.job.error : "";
+  if(previousJob === "running" && !running) message(state.job.status === "finished" ? state.job.successful + " Notizen analysiert · " + state.job.errors + " Fehler. Die Ergebnisse stehen an jeder Notiz." : state.job.error, state.job.errors > 0 || state.job.status === "failed");
+  previousJob = state.job?.status || "idle";
+  if(running && !pollTimer) pollTimer = setTimeout(()=>{pollTimer=null;run(refresh);},1500);
   const approved = rows.filter(x=>x.decision?.status==="approved").length;
   const deferred = rows.filter(x=>x.decision?.status==="deferred").length;
   $("overview").textContent = rows.length+" Inbox-Notizen · "+approved+" freigegeben · "+deferred+" zurückgestellt · "+(rows.length-approved-deferred)+" offen";
-  $("prepare").disabled = !approved || state.bridge.status==="awaiting-obsidian";
+  $("prepare").disabled = running || !approved || state.bridge.status==="awaiting-obsidian";
   const allFolders = state.folders.map(f=>[f,f]);
   const currently = $("ref-folder").value;
   options($("ref-folder"),allFolders,currently);
   $("notes").replaceChildren();
+  if(!rows.some(r=>r.source===selectedSource)) selectedSource = rows[0]?.source || null;
   for(const row of rows) showNote(row,allFolders);
+  showReview(rows.find(r=>r.source===selectedSource), allFolders);
   const bridge = $("bridge"); bridge.replaceChildren();
   const b = state.bridge;
   $("cancel-batch").hidden = b.status!=="awaiting-obsidian";
@@ -144,50 +163,106 @@ async function refresh() {
     bridge.append(log);
   } else bridge.textContent = "Noch kein Verschiebungsstapel vorbereitet.";
 }
+function statusFor(row) {
+  if(row.decision?.status==="approved") return ["Freigegeben","state-approved"];
+  if(row.decision?.status==="deferred") return ["Zurückgestellt","state-deferred"];
+  if(row.error) return ["Analyse fehlgeschlagen","state-error"];
+  if(row.analysis?.manual_review) return ["Ziel selbst wählen","state-review"];
+  return row.analysis ? ["Prüfung offen","state-review"] : ["Nicht analysiert",""];
+}
 function showNote(row,folders) {
-  const card=elem("div",undefined,"note");
-  const heading=elem("div",undefined,"line");
-  heading.append(elem("span",row.source,"note-title"));
-  const decisionStatus=row.decision?.status;
-  const statusText=decisionStatus==="approved"?"Freigegeben":decisionStatus==="deferred"?"Zurückgestellt":row.analysis?"Prüfung offen":"Nicht analysiert";
-  const statusClass=decisionStatus==="approved"?"state-approved":decisionStatus==="deferred"?"state-deferred":row.analysis?"state-review":"";
-  heading.append(elem("span",statusText,"chip "+statusClass));
-  card.append(heading);
-  const a=row.analysis;
-  if(a) {
-    const target=elem("div",undefined,"line");
-    target.append(elem("span",a.manual_review?"Kein eindeutiger Vorschlag – bitte selbst entscheiden":"Vorgeschlagener Ordner: "+a.primary,"path"));
-    target.append(elem("span",a.provider==="local"?"jevos-v4 lokal":"Jev Cloud","chip"));
-    card.append(target);
-    const probs=elem("div","Modellwerte: "+a.alternatives.map(x=>x.folder+" ("+Math.round(x.probability*100)+" %)").join(" · "),"muted model-scores");
-    probs.title="Modellwahrscheinlichkeiten, keine empirisch gemessene Trefferquote.";
-    card.append(probs);
-    const refs=elem("details");
-    refs.append(elem("summary","Genutzte Referenznotizen ("+a.reference_sources.length+")"));
-    refs.append(elem("div",a.reference_sources.join("\n"),"muted"));
-    card.append(refs);
-    const choices=elem("div",undefined,"decision-actions");
-    const select=elem("select");
-    select.setAttribute("aria-label","Zielordner für "+row.source);
-    options(select,folders,a.primary || a.alternatives[0]?.folder);
-    choices.append(select);
-    choices.append(button("Bestätigen",async()=>{
-      await api("/api/decide",{source:row.source,status:"approved",destination:select.value});
-      message("Freigegeben: "+row.source); await refresh();
-    },"primary"));
-    choices.append(button("Zurückstellen",async()=>{
-      await api("/api/decide",{source:row.source,status:"deferred"});
-      message("Zurückgestellt: "+row.source); await refresh();
-    }));
-    card.append(choices);
-  }
-  const details=elem("details");
-  const summary=elem("summary","Notizinhalt anzeigen"); details.append(summary);
+  const item=button("",async()=>{
+    selectedSource=row.source;
+    for(const child of $("notes").children) child.setAttribute("aria-current", String(child.dataset.source===selectedSource));
+    showReview(row,folders);
+  },"inbox-item");
+  item.dataset.source=row.source;
+  item.setAttribute("aria-current",String(row.source===selectedSource));
+  const [label,variant]=statusFor(row);
+  item.append(elem("span",row.title || row.source.split("/").pop().replace(/\.md$/i,""),"inbox-title"));
+  item.append(elem("span",label,"chip "+variant));
+  if(row.analysis?.primary) item.append(elem("span",row.analysis.primary,"inbox-destination"));
+  $("notes").append(item);
+}
+function showReview(row,folders) {
+  const card=$("note-review"); card.replaceChildren();
+  if(!row) {card.append(elem("p","Die Inbox ist leer."));return;}
+  const [label,variant]=statusFor(row);
+  const heading=elem("div",undefined,"review-heading");
+  heading.append(elem("h3",row.title || row.source.split("/").pop()));
+  heading.append(elem("span",label,"chip "+variant));card.append(heading);
+  card.append(elem("div",row.source,"source-path muted"));
+  const columns=elem("div",undefined,"review-columns");
+  const content=elem("div",undefined,"review-content");
+  content.append(elem("h4","Worum geht es?"));
+  content.append(elem("p",row.preview?.replace(/^#{1,6}\s*/gm, "").replace(/\*\*/g, "") || "Keine Vorschau verfügbar.","note-preview"));
+  content.append(elem("small","Original: "+(row.characters || 0).toLocaleString("de-DE")+" Zeichen. Vorschau zeigt ausgewählte Originalpassagen."));
+  const details=elem("details"); details.append(elem("summary","Vollständigen Notizinhalt anzeigen"));
   details.addEventListener("toggle",()=>{if(details.open && !details.dataset.loaded){
     details.dataset.loaded="1";
     run(async()=>{const x=await api("/api/note?source="+encodeURIComponent(row.source));details.append(elem("pre",x.text));});
   }});
-  card.append(details);$("notes").append(card);
+  content.append(details);columns.append(content);
+  const recommendation=elem("div",undefined,"review-recommendation");
+  const a=row.analysis;
+  if(row.error) {
+    recommendation.append(elem("h4","Analyse fehlgeschlagen","status-error"));
+    recommendation.append(elem("p",row.error.error,"status-error"));
+    recommendation.append(elem("p","Es gibt keinen aktuellen Vorschlag zur Freigabe. Die Analyse kann oben erneut gestartet werden.","muted"));
+  } else if(a) {
+    recommendation.append(elem("h4",a.manual_review ? "Kein eindeutiges Ziel" : "Vorgeschlagene Ablage"));
+    recommendation.append(elem("p",a.primary || "Bitte einen Zielordner wählen.","recommended-path"));
+    recommendation.append(elem("small",(a.provider==="local"?"jevos-v4 lokal":"Jev Cloud")+" · "+(a.elapsed_seconds ?? "–")+" Sekunden"));
+    recommendation.append(elem("p","Modellwerte sind keine gemessene Trefferquote. Vergleiche die Originalpassagen vor der Freigabe.","model-caution"));
+    const select=elem("select"); select.setAttribute("aria-label","Zielordner für "+row.source);
+    let chosen=row.decision?.destination || a.primary || "";
+    options(select,[["","Zielordner wählen…"],...folders],chosen);
+    const approve=button("Ablage bestätigen",async()=>{
+      await api("/api/decide",{source:row.source,status:"approved",destination:select.value});
+      message("Freigegeben: "+row.title); await refresh();
+    },"primary");
+    const updateApproval=()=>{approve.disabled=!select.value || state.job?.status==="running";};
+    select.addEventListener("change",()=>{chosen=select.value;renderEvidence(chosen);updateApproval();});
+    recommendation.append(elem("h4","Ziele vergleichen"));
+    for(const alternative of a.alternatives) {
+      const option=button("",async()=>{
+        chosen=alternative.folder;select.value=chosen;renderEvidence(chosen);updateApproval();
+      },"alternative-choice");
+      option.append(elem("span",alternative.folder));
+      option.append(elem("small",Math.round(alternative.probability*100)+" % Modellwert"));
+      recommendation.append(option);
+    }
+    const evidencePanel=elem("div",undefined,"evidence-panel"); recommendation.append(evidencePanel);
+    function renderEvidence(folder) {
+      evidencePanel.replaceChildren();
+      const target=a.evidence?.find(c=>c.folder===folder);
+      evidencePanel.append(elem("h4","Referenzen für " + (folder || "das gewählte Ziel")));
+      if(!target?.references.length) {
+        evidencePanel.append(elem("p",folder ? "Für diesen Ordner wurden keine Referenzpassagen an das Modell übergeben." : "Wähle ein Ziel, um seine Referenzpassagen zu vergleichen.","muted"));return;
+      }
+      for(const reference of target.references) {
+        const evidence=elem("div",undefined,"reference-evidence");
+        evidence.append(elem("strong",reference.title || reference.source.split("/").pop()));
+        evidence.append(elem("blockquote",reference.snippet));
+        const path=elem("details");path.append(elem("summary","Referenzpfad"));path.append(elem("small",reference.source));evidence.append(path);
+        evidencePanel.append(evidence);
+      }
+      evidencePanel.append(elem("small","Diese Originalauszüge wurden tatsächlich an das Modell übergeben. Sie sind keine nachträglich erzeugte Begründung."));
+    }
+    renderEvidence(chosen || a.alternatives[0]?.folder);
+    const actions=elem("div",undefined,"decision-actions");
+    actions.append(elem("label","Ziel korrigieren / wählen"));actions.append(select);actions.append(approve);
+    const defer=button("Zurückstellen",async()=>{
+      await api("/api/decide",{source:row.source,status:"deferred"});message("Zurückgestellt: "+row.title);await refresh();
+    });defer.disabled=state.job?.status==="running";actions.append(defer);recommendation.append(actions);updateApproval();
+    const modelInput=elem("details");modelInput.append(elem("summary","Vom Modell berücksichtigte Textauszüge"));
+    modelInput.append(elem("p",a.excerpted ? "Für die lokale Entscheidung wurden relevante Passagen aus dem gesamten Artikel ausgewählt. Der vollständige Artikel ist links abrufbar." : "Der Text wurde vollständig berücksichtigt.","muted"));
+    modelInput.append(elem("pre",a.input_excerpt || "Für ältere Analysen nicht gespeichert."));recommendation.append(modelInput);
+  } else {
+    recommendation.append(elem("h4",state.job?.status==="running"?"Analyse läuft":"Noch kein Ablagevorschlag"));
+    recommendation.append(elem("p","Starte oben die Analyse. Deine Originaldatei bleibt bis zur Freigabe in der Inbox.","muted"));
+  }
+  columns.append(recommendation);card.append(columns);
 }
 async function references() {
   const folder=$("ref-folder").value;
@@ -227,11 +302,10 @@ $("analyze").addEventListener("click",()=>run(async()=>{
   $("analyze").disabled=true;
   message("Analysiere Inbox mit "+provider+".");
   try {
-    const result=await api("/api/analyze",{provider,cloud_consent:consent,limit:Number($("limit").value)});
-    message(result.total+" Notizen ausgewertet; "+result.review_needed+" manuell prüfen."+
-      (result.errors.length?"\nFehler: "+result.errors.map(x=>x.source+": "+x.error).join("\n"):""));
+    await api("/api/analyze",{provider,cloud_consent:consent,limit:Number($("limit").value),include_archives:$("include-archives").checked});
+    message("Analyse gestartet. Ergebnisse erscheinen nach jeder Notiz.");
     await refresh();
-  } finally {$("analyze").disabled=false;}
+  } finally {$("analyze").disabled=state?.job?.status==="running";}
 }));
 $("prepare").addEventListener("click",()=>run(async()=>{
   const approved=state.rows.filter(x=>x.decision?.status==="approved");

@@ -10,7 +10,8 @@ Write-Host "Jevos lokal starten: http://127.0.0.1:8017/health"
 Write-Host "Dieses Fenster offen lassen. Mit Strg+C beenden."
 Push-Location (Split-Path -Parent $bin)
 try {
-    & $bin serve
+    # No idle shape compilation; reserve CPU capacity for the desktop UI.
+    & $bin serve --warmup 0 --threads 4
     if ($LASTEXITCODE -ne 0) { throw "jev.exe wurde mit Exitcode $LASTEXITCODE beendet." }
 }
 finally {

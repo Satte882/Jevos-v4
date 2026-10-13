@@ -3,15 +3,59 @@ from __future__ import annotations
 
 import hashlib
 import re
+import math
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
 MAX_NOTE = 64 * 1024
-MAX_ANALYSIS_TEXT = 9000
+MAX_ANALYSIS_TEXT = 12_000
 MAX_REF_TEXT = 700
 MAX_CANDIDATES = 8
 IGNORED = {".obsidian", ".git", ".trash", ".local", "node_modules", "__pycache__"}
 STOP = set("und oder aber doch den dem der die das ein eine einer einem einen auf mit ohne von für zum zur im in am an zu aus bei über unter ist sind als noch ich du wir ihr sie er es was wie wenn dann auch nicht mehr mein meine this that with from have them about when where your into notes note file".split())
+STOP.update("the and for are you our their can will has its not all also how why welche dieser diese dieses durch wird werden einer eines sich auch sowie dazu damit hier dort dabei sein sehr beispielsweise beispiel können kann soll sollte müssen neue neuen erste ersten http https www com source title created description png jpg pasted image".split())
+STOP.update("bedeutet bedeutung wichtig wichtigsten schlüsselkomponenten herausforderungen jahr organisation organisationen unternehmen unternehmensorganisationen wahrscheinlich vorbereitet lösen löst erklärt schließen sicherstellung unverzichtbar".split())
+GENERIC_TOPICS = {"ai", "data", "model", "models", "business"}
+
+
+def content_text(text: str) -> str:
+    """Lesbarer Inhalt ohne Metadaten, URL-Tokens oder Bildreferenzen."""
+    text = re.sub(r"\A---\s*\n.*?\n---\s*\n", "", text, count=1, flags=re.S)
+    text = re.sub(r"!\[\[.*?\]\]|!\[[^\]]*\]\([^)]*\)", "", text)
+    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"https?://\S+", "", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r"^\s*\|?[ :|\-]{4,}\s*$", "", text, flags=re.M)
+    return text.strip()
+
+
+def relevant_excerpt(text: str, query: str, budget: int = 1400) -> str:
+    """Auszüge über den gesamten Text; keine generierte Zusammenfassung."""
+    clean = content_text(text)
+    if len(clean) <= budget:
+        return clean
+    chunks = [s.strip() for s in re.split(r"\n\s*\n", clean) if s.strip()]
+    q = tokens(query)
+    if budget <= 400:
+        passages = [s for s in chunks if len(s) >= 60 and not s.startswith("#")] or chunks
+        best = max(passages, key=lambda s: (len((q - GENERIC_TOPICS) & tokens(s)),
+                                            len(q & tokens(s)), -chunks.index(s)))
+        return best[:budget]
+    ranked = sorted(range(len(chunks)), key=lambda i: (-len(q & tokens(chunks[i])), i))
+    selected = {0}
+    remaining = budget - min(len(chunks[0]), 250) - 10
+    for i in ranked:
+        if i == 0 or remaining < 80:
+            continue
+        selected.add(i)
+        remaining -= min(len(chunks[i]), 450) + 10
+    excerpts = [chunks[i][:250 if i == 0 else 450] for i in sorted(selected)]
+    return "\n[…]\n".join(excerpts)[:budget]
+
+
+def archived(folder: str) -> bool:
+    return bool(re.search(r"archiv|backlog|trash|papierkorb", folder, re.I))
 
 
 def rooted(root: str | Path, path: str | Path) -> Path:
@@ -46,8 +90,16 @@ def file_sha(file: Path) -> str:
 
 
 def tokens(s: str) -> set[str]:
-    return {w for w in re.findall(r"[^\W\d_]{3,}", s.lower(), flags=re.UNICODE)
-            if w not in STOP}
+    s = re.sub(r"daten[ -]?mesh", "data mesh", s, flags=re.I)
+    s = re.sub(r"datenverwaltung|datenmanagement", "data governance management", s, flags=re.I)
+    s = re.sub(r"datenqualität", "data quality", s, flags=re.I)
+    s = re.sub(r"f[öe]deriert\w*", "federated", s, flags=re.I)
+    s = re.sub(r"\bki\b", "ai", s, flags=re.I)
+    s = re.sub(r"\b(?:risik\w*|risk\w*)", "risk", s, flags=re.I)
+    s = re.sub(r"\b(?:skalier\w*|scaling|scalability)", "scaling", s, flags=re.I)
+    s = re.sub(r"\bnativ\w*", "native", s, flags=re.I)
+    return {w for w in re.findall(r"[^\W\d_]{2,}", s.lower(), flags=re.UNICODE)
+            if w not in STOP and (len(w) >= 3 or w in {"ai", "ml"})}
 
 
 @dataclass
@@ -55,6 +107,10 @@ class Note:
     source: str
     sha256: str
     text: str
+
+    @property
+    def title(self) -> str:
+        return Path(self.source).stem
 
 
 class VaultIndex:
@@ -67,6 +123,8 @@ class VaultIndex:
         self.inbox_notes: list[Note] = []
         self.folders: list[str] = []
         self.references: dict[str, list[Note]] = {}
+        self._cache = {}
+        self.idf = {}
         self.reload()
 
     def _note(self, file: Path) -> Note | None:
@@ -75,8 +133,15 @@ class VaultIndex:
         try:
             if file.stat().st_size > MAX_NOTE:
                 return None
-            return Note(normalized(self.root, file), file_sha(file),
-                        file.read_text(encoding="utf-8-sig")[:MAX_ANALYSIS_TEXT])
+            stat = file.stat()
+            key = (stat.st_mtime_ns, stat.st_size)
+            cached = self._cache.get(file)
+            if cached and cached[0] == key:
+                return cached[1]
+            note = Note(normalized(self.root, file), file_sha(file),
+                        file.read_text(encoding="utf-8-sig"))
+            self._cache[file] = (key, note)
+            return note
         except (UnicodeError, OSError):
             return None
 
@@ -115,6 +180,25 @@ class VaultIndex:
                 if len(selected) >= 50:  # Begrenzter lesender Index pro Ordner
                     break
             self.references[folder] = selected
+        docs = [tokens(n.title + " " + content_text(n.text)[:MAX_ANALYSIS_TEXT])
+                for refs in self.references.values() for n in refs]
+        counts = Counter(word for doc in docs for word in doc)
+        self.idf = {word: math.log(1 + (len(docs) + 1) / (count + 1))
+                    for word, count in counts.items()}
+
+    def relevance(self, query: Note, reference: Note) -> float:
+        title = tokens(query.title)
+        q = tokens(content_text(query.text)[:MAX_ANALYSIS_TEXT]) | title
+        rt = tokens(reference.title)
+        body = tokens(content_text(reference.text)[:MAX_ANALYSIS_TEXT])
+        score = sum(self.idf.get(w, 1) * (0.3 if w in GENERIC_TOPICS else 1) *
+                    (6 if w in title else 1) * (4 if w in rt else 1)
+                    for w in q & (rt | body))
+        # Topic words in a note title must outweigh broad vocabulary overlap.
+        subject = title - GENERIC_TOPICS
+        subject_score = sum(self.idf.get(w, 1) * (10 if w in rt else 4)
+                            for w in subject & (rt | body))
+        return subject_score + score / math.sqrt(max(1, len(body)))
 
     def pick_references(self, folder: str, note: Note, state: dict, limit: int = 3) -> list[Note]:
         options = self.references.get(folder, [])
@@ -123,22 +207,26 @@ class VaultIndex:
         relevant = [n for n in options if n.source not in excluded]
         pinned = [n for source in pins for n in relevant if n.source == source]
         remaining = [n for n in relevant if n not in pinned]
-        q = tokens(note.source + " " + note.text[:1200])
-        remaining.sort(key=lambda n: (len(q & tokens(n.source + " " + n.text[:1200])),
-                                      n.source), reverse=True)
+        remaining.sort(key=lambda n: (-self.relevance(note, n), n.source))
         return (pinned + remaining)[:limit]
 
     def candidates(self, note: Note, state: dict, limit: int = MAX_CANDIDATES) -> list[dict]:
-        words = tokens(note.source + " " + note.text[:2500])
+        words = tokens(note.title + " " + content_text(note.text)[:MAX_ANALYSIS_TEXT])
+        title_words = tokens(note.title)
         folders = []
         for folder in self.folders:
+            if archived(folder) and not state.get("include_archives", False):
+                continue
             refs = self.pick_references(folder, note, state)
-            folder_score = 3 * len(words & tokens(folder.replace("/", " ")))
-            ref_score = max((len(words & tokens(n.source + " " + n.text[:1200])) for n in refs), default=0)
+            folder_score = sum((14 if w in title_words else 2) * self.idf.get(w, 1) * (0.3 if w in GENERIC_TOPICS else 1)
+                                   for w in words & tokens(folder.replace("/", " ")))
+            ref_score = max((self.relevance(note, n) for n in refs), default=0)
             folders.append((folder_score + ref_score, folder, refs))
         folders.sort(key=lambda t: (-t[0], t[1]))
-        return [{"folder": folder, "match": score,
-                 "references": [{"source": ref.source, "snippet": ref.text[:MAX_REF_TEXT]}
+        return [{"folder": folder, "match": round(score, 3),
+                 "references": [{"source": ref.source, "title": ref.title,
+                                 "model_snippet": relevant_excerpt(ref.text, note.title, 180),
+                                 "snippet": relevant_excerpt(ref.text, note.title, MAX_REF_TEXT)}
                                 for ref in refs]}
                 for score, folder, refs in folders[:limit]]
 

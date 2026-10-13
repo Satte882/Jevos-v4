@@ -86,6 +86,12 @@ Das zweite Kommando **im eigenen PowerShell-Fenster geöffnet lassen**. Es start
 
 ## Ablauf in drei Schritten
 
+Die Prüfansicht zeigt den **aktiven Vault und Inbox-Pfad**. Links wählt man eine Inbox-Datei, rechts stehen lesbare Originalauszüge, bis zu drei Zielalternativen und die tatsächlich übergebenen Referenzpassagen. Der vollständige Originaltext ist separat abrufbar. Unsichere Vorschläge benötigen eine bewusste Zielauswahl; ein Ordner wird dabei nicht vorgewählt.
+
+Die Analyse läuft im Hintergrund mit Fortschritt pro Datei. Fehler bleiben an der jeweiligen Notiz sichtbar; alte Vorschläge und Freigaben werden vor einer erneuten Analyse entfernt. Ergebnisse werden getrennt je Vault unter `.local/vault-state/` gespeichert. Archiv- und Backlog-Ordner sind bei der Vorauswahl standardmäßig ausgeschlossen, können aber explizit einbezogen und weiterhin manuell gewählt werden.
+
+Für die CPU-Verarbeitung nutzt `start-jev.ps1` vier Threads ohne Vorwärmen im Leerlauf. Pro Artikel werden relevante Originalpassagen aus dem gesamten Text ausgewählt (maximal 1.400 Zeichen), dazu fünf Zielordner mit jeweils bis zu zwei Referenzauszügen (je 180 Zeichen). Die Auszüge sind in der Prüfansicht nachvollziehbar; das Modell erhält keine vollständigen langen Artikel. Das lokale Zeitlimit beträgt 90 Sekunden. Bei einem Verbindungsfehler oder Zeitlimit werden weitere Abfragen im selben Lauf ausgesetzt, um keine Warteschlange aufzubauen.
+
 1. **Inbox analysieren.** Modellanbieter explizit wählen. Der lokale Index untersucht Ordner, ausgewählte Referenznotizen und ermittelt maximal acht Zielkandidaten. Das Modell trifft eine Choice-Entscheidung. Eine schwache oder mehrdeutige Entscheidung wird mit „Manuell prüfen“ markiert.
 2. **Vorschläge prüfen.** Hauptordner bestätigen, beliebigen existierenden Ordner als Korrektur wählen oder zurückstellen. Automatisch gewählte Referenznotizen im Panel bevorzugen/ausschließen; anschließend neu analysieren.
 3. **Freigegebene Notizen verschieben.** Im Browser Stapel bestätigen und vollständigen Vault als ZIP außerhalb des Vaults sichern. Dann in **geöffnetem Obsidian** den Befehl **„Freigegebene Inbox-Verschiebungen anwenden“** aufrufen und **dort separat bestätigen**. Erst das Obsidian-Plugin führt `app.fileManager.renameFile()` aus und schreibt das Ergebnis.
