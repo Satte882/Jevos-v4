@@ -66,7 +66,9 @@ async function regressionTests(){
   let completeFile;
   element("file").files=[{name:"synthetic.txt",size:10,text:()=>new Promise(resolve=>{completeFile=resolve;})}];
   const imported=run("file","change");
+  assert.equal(element("file-name").textContent,"synthetic.txt");
   run("clear","click");
+  assert.equal(element("file-name").textContent,"TXT, MD oder DOCX · keine Datei ausgewählt");
   completeFile("Veralteter Dateiinhalt");await imported;
   assert.equal(element("original").value,"");
   assert.equal(element("reviewed").disabled,false);
