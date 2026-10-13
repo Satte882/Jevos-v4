@@ -19,6 +19,8 @@ jobs:
         run: node --check obsidian-plugin/main.js
       - name: Validate redaction view JavaScript
         run: node tests/test_redaction_ui.cjs
+      - name: Validate technology labels and info buttons
+        run: node tests/test_tech_info.cjs
       - name: Test Obsidian one-click launcher
         run: node tests/test_launcher.cjs
       - name: Run synthetic Obsidian bridge preflight

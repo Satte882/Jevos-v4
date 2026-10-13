@@ -23,6 +23,11 @@ label{cursor:pointer}.actions,.line{display:flex;gap:10px;align-items:center;fle
 details{margin-top:9px}summary{cursor:pointer;color:#bed1f7}
 fieldset{border:1px solid #455061;border-radius:8px;padding:10px}legend{padding:0 8px}
 strong{font-weight:650}.kpi{color:#b9d0f0}#ref-panel{margin-top:12px}
+.technology{color:#d0e0fa;margin:8px 0 12px}
+.tech-option{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;margin-right:20px}
+.info-button{display:inline-flex;align-items:center;justify-content:center;width:25px;height:25px;padding:0;border-radius:50%;background:#27374b;border:1px solid #7895bb;color:#e9eef5;font-size:.85rem;font-weight:700}
+.info-panel{background:#111822;border:1px solid #45566f;border-radius:8px;padding:11px 13px;margin-top:10px;max-width:920px}
+.info-panel[hidden]{display:none}
 #ref-panel .line{border-bottom:1px solid #313b49;padding:6px 0}#ref-panel button{padding:5px 8px}
 @media(max-width:650px){header{display:block}.actions{align-items:stretch}button{max-width:100%}select{min-width:0;width:100%}}
 </style>
@@ -35,10 +40,18 @@ strong{font-weight:650}.kpi{color:#b9d0f0}#ref-panel{margin-top:12px}
 <section>
   <h2>1 · Inbox analysieren</h2>
   <p class="muted">Die Ordner und passenden Referenznotizen werden lokal vorausgewählt. Nur das ausgewählte Modell entscheidet.</p>
-  <fieldset><legend>Modellanbieter (nur einer aktiv)</legend>
-    <label><input type="radio" name="provider" value="local" checked> jevos-v4 · lokal</label>
-    &nbsp;&nbsp;
-    <label><input type="radio" name="provider" value="jev"> Jev · TypeSafe Cloud</label>
+  <p class="technology"><strong>Hier arbeitet Jev (System-One-KI):</strong> Das Modell entscheidet per <code>Choice</code>, in welchen bestehenden Ordner eine Notiz am besten passt.</p>
+  <fieldset><legend>Entscheidungsmodell auswählen (nur eines aktiv)</legend>
+    <span class="tech-option">
+      <label><input type="radio" name="provider" value="local" checked> <strong>jevos-v4 · lokal</strong></label>
+      <button type="button" class="info-button" data-info-target="local-info" aria-controls="local-info" aria-expanded="false" aria-label="Informationen zu jevos-v4 lokal" title="Was ist jevos-v4?">i</button>
+    </span>
+    <span class="tech-option">
+      <label><input type="radio" name="provider" value="jev"> <strong>Jev · TypeSafe Cloud</strong></label>
+      <button type="button" class="info-button" data-info-target="cloud-info" aria-controls="cloud-info" aria-expanded="false" aria-label="Informationen zu Jev TypeSafe Cloud" title="Was ist Jev Cloud?">i</button>
+    </span>
+    <div id="local-info" class="info-panel" hidden><strong>jevos-v4 (lokal)</strong> ist ein System-One-Modell für kurze semantische Entscheidungen, nicht für Chat oder Textgenerierung. Es wählt aus vorgegebenen Ordnern und liefert Wahrscheinlichkeiten. Das Modell läuft auf deinem PC über einen separaten lokalen Server.</div>
+    <div id="cloud-info" class="info-panel" hidden><strong>Jev · TypeSafe Cloud</strong> erledigt dieselbe Art strukturierter Entscheidung über die TypeSafe-API im Internet. Erst nach ausdrücklicher Freigabe werden Inbox-Notizen und ausgewählte Referenztexte übertragen; mögliche API-Kosten beachten.</div>
   </fieldset>
   <div class="line"><label><input type="checkbox" id="cloud"> Ich stimme der Übertragung von Inbox-Notizen und ausgewählten Referenztexten an Jev · TypeSafe Cloud zu.</label></div>
   <div class="line"><label>Maximale Notizen: <select id="limit"><option>5</option><option selected>20</option><option>50</option></select></label>
@@ -69,6 +82,18 @@ strong{font-weight:650}.kpi{color:#b9d0f0}#ref-panel{margin-top:12px}
 const TOKEN = "__SESSION_TOKEN__";
 let state = null;
 const $ = id => document.getElementById(id);
+document.querySelectorAll("[data-info-target]").forEach(infoButton => {
+  infoButton.addEventListener("click", () => {
+    const target = $(infoButton.dataset.infoTarget);
+    const shouldOpen = target.hidden;
+    document.querySelectorAll("[data-info-target]").forEach(other => {
+      $(other.dataset.infoTarget).hidden = true;
+      other.setAttribute("aria-expanded", "false");
+    });
+    target.hidden = !shouldOpen;
+    infoButton.setAttribute("aria-expanded", String(shouldOpen));
+  });
+});
 const elem = (tag, text, className) => {
   const e = document.createElement(tag);
   if (text !== undefined) e.textContent = text;
