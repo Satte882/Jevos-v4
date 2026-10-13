@@ -4,39 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Obsidian Inbox-Assistent</title>
-<style>
-:root {color-scheme:dark; font:15px/1.45 system-ui,Segoe UI,sans-serif; background:#11151b;color:#e9eef5}
-*{box-sizing:border-box}body{margin:0 auto;max-width:1100px;padding:24px 20px 80px}
-h1{margin:0;font-size:1.65rem}h2{font-size:1.08rem;margin:0 0 12px}small,.muted{color:#a9b5c5}
-header{display:flex;align-items:flex-end;gap:20px;justify-content:space-between;margin-bottom:20px}
-section,.note{background:#1a212b;border:1px solid #354151;border-radius:12px;padding:18px;margin-bottom:16px}
-button,select,input{font:inherit}button{cursor:pointer;background:#4467b3;border:1px solid #6e90d0;color:white;border-radius:8px;padding:9px 12px}
-button.secondary{background:#2a3442;border-color:#465364}button:disabled{opacity:.4;cursor:not-allowed}
-button:focus,select:focus,input:focus{outline:2px solid #93b7fa}
-button:hover:not(:disabled){filter:brightness(1.14)}
-select{background:#111822;color:#e9eef5;border:1px solid #536176;border-radius:7px;padding:9px;max-width:100%;min-width:220px}
-label{cursor:pointer}.actions,.line{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.line{margin:10px 0}
-.note{padding:15px}.note .line{justify-content:space-between;align-items:center}.note-title{font-weight:650;word-break:break-word}
-.path{color:#bdd3f5;word-break:break-all}pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;background:#0f141b;border-radius:8px;max-height:300px;overflow:auto}
-#message{margin:16px 0;white-space:pre-wrap}#message.error{color:#ff9c98}#message.ok{color:#a6e5bf}
-.chip{padding:3px 7px;background:#27374b;border-radius:5px;font-size:.8rem}
-details{margin-top:9px}summary{cursor:pointer;color:#bed1f7}
-fieldset{border:1px solid #455061;border-radius:8px;padding:10px}legend{padding:0 8px}
-strong{font-weight:650}.kpi{color:#b9d0f0}#ref-panel{margin-top:12px}
-.technology{color:#d0e0fa;margin:8px 0 12px}
-.tech-option{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;margin-right:20px}
-.info-button{display:inline-flex;align-items:center;justify-content:center;width:25px;height:25px;padding:0;border-radius:50%;background:#27374b;border:1px solid #7895bb;color:#e9eef5;font-size:.85rem;font-weight:700}
-.info-panel{background:#111822;border:1px solid #45566f;border-radius:8px;padding:11px 13px;margin-top:10px;max-width:920px}
-.info-panel[hidden]{display:none}
-#ref-panel .line{border-bottom:1px solid #313b49;padding:6px 0}#ref-panel button{padding:5px 8px}
-@media(max-width:650px){header{display:block}.actions{align-items:stretch}button{max-width:100%}select{min-width:0;width:100%}}
-</style>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/assets/ui.css">
 </head>
 <body>
-<header>
-  <div><h1>Obsidian Inbox-Assistent</h1><a href="/anonymize" style="color:#bed1f7">Text für externe KI bereinigen →</a><div class="muted">Analysieren → Prüfen → in Obsidian verschieben</div></div>
+<header class="app-header">
+  <div class="header-title"><h1>Obsidian Inbox-Assistent</h1><div class="muted">Analysieren → Prüfen → in Obsidian verschieben</div></div>
+  <a class="view-switch" href="/anonymize" aria-label="Text für externe KI bereinigen">Text bereinigen <span aria-hidden="true">↗</span></a>
   <button id="refresh" class="secondary">Ansicht aktualisieren</button>
 </header>
+<main class="workspace">
+<div class="workspace-config">
 <section>
   <h2>1 · Inbox analysieren</h2>
   <p class="muted">Die Ordner und passenden Referenznotizen werden lokal vorausgewählt. Nur das ausgewählte Modell entscheidet.</p>
@@ -64,6 +42,8 @@ strong{font-weight:650}.kpi{color:#b9d0f0}#ref-panel{margin-top:12px}
   <div class="line"><label>Ordner: <select id="ref-folder"></select></label><button id="ref-load" class="secondary">Referenzen anzeigen</button></div>
   <div id="ref-panel"></div>
 </section>
+</div>
+<div class="workspace-results">
 <section>
   <h2>2 · Vorschläge prüfen</h2>
   <div id="overview" class="muted"></div>
@@ -76,6 +56,8 @@ strong{font-weight:650}.kpi{color:#b9d0f0}#ref-panel{margin-top:12px}
   <button id="cancel-batch" class="secondary" hidden>Ausstehenden Stapel verwerfen</button>
   <div id="bridge" class="muted"></div>
 </section>
+</div>
+</main>
 <div id="message" role="status" aria-live="polite"></div>
 <script>
 "use strict";
