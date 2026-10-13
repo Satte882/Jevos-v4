@@ -4,6 +4,33 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Push-Location $repo
 $hasKey = $false
 try {
+    # Ein optionaler lokaler .env-Eintrag vermeidet die wiederholte Key-Eingabe.
+    # Keine Code-Ausführung und kein generisches Importieren fremder Variablen.
+    # Eine bereits gesetzte Umgebungsvariable hat Vorrang.
+    if (-not $env:TYPESAFE_API_KEY) {
+        $envFile = Join-Path $repo ".env"
+        if (Test-Path -LiteralPath $envFile -PathType Leaf) {
+            $keyLines = @(Get-Content -LiteralPath $envFile -Encoding UTF8 |
+                Where-Object { $_ -match '^\s*TYPESAFE_API_KEY\s*=' })
+            if ($keyLines.Count -gt 1) {
+                throw "In .env steht TYPESAFE_API_KEY mehrfach. Bitte nur einen Eintrag behalten."
+            }
+            if ($keyLines.Count -eq 1) {
+                $keyValue = ($keyLines[0] -replace '^\s*TYPESAFE_API_KEY\s*=\s*', '').Trim()
+                if ($keyValue.Length -ge 2 -and (
+                    ($keyValue.StartsWith('"') -and $keyValue.EndsWith('"')) -or
+                    ($keyValue.StartsWith("'") -and $keyValue.EndsWith("'"))
+                )) {
+                    $keyValue = $keyValue.Substring(1, $keyValue.Length - 2)
+                }
+                if ($keyValue) {
+                    $env:TYPESAFE_API_KEY = $keyValue
+                    $hasKey = $true
+                    Write-Host "TypeSafe-Key aus lokaler .env geladen."
+                }
+            }
+        }
+    }
     if (-not $env:TYPESAFE_API_KEY) {
         $cloud = Read-Host "TypeSafe Jev Cloud in dieser Sitzung nutzbar machen? (J/N)"
         if ($cloud -eq "J") {
