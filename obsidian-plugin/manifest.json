@@ -1,0 +1,9 @@
+{
+  "id": "jev-inbox-bridge",
+  "name": "Jev Inbox Bridge",
+  "version": "0.1.0",
+  "minAppVersion": "1.4.0",
+  "description": "Apply manually approved local Obsidian Inbox moves using FileManager.renameFile.",
+  "author": "Local MVP",
+  "isDesktopOnly": true
+}
