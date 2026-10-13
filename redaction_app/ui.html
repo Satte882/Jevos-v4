@@ -7,12 +7,12 @@
 <link rel="stylesheet" href="/assets/ui.css">
 </head>
 <body class="redaction-app">
-<header>
-<div><h1>Text für externe KI bereinigen</h1><p class="muted">Lokal verarbeiten · Prüfen · Kopieren</p></div>
-<a href="/">← Zur Obsidian Inbox</a>
+<header class="app-header">
+<div class="header-title"><h1>Text für externe KI bereinigen</h1><p class="muted">Lokal verarbeiten · Prüfen · Kopieren</p></div>
+<a class="view-switch" href="/" aria-label="Zum Obsidian Inbox-Assistenten zurück">← Inbox-Assistent</a>
 </header>
 <section>
-<h2>1 · Text eingeben</h2>
+<h2>1 · Text eingeben und bereinigen</h2>
 <div class="tech-summary">
   <strong>Hier arbeitet spaCy · de_core_news_md</strong>
   <button type="button" class="info-button" id="tech-info-button" aria-controls="tech-info" aria-expanded="false" aria-label="Informationen zu spaCy und dem deutschen Sprachmodell" title="Was ist spaCy?">i</button>
@@ -25,39 +25,43 @@
   <strong>Python</strong> ersetzt die Treffer durch konsistente Platzhalter.
   Das ist <strong>nicht Jevos-v4</strong>; alle Schritte laufen auf deinem Rechner. Die Erkennung ist nicht vollständig zuverlässig – Ergebnis immer prüfen.
 </div>
-<p>Text einfügen oder eine TXT-, MD- oder DOCX-Datei auswählen. Eingaben bleiben in dieser lokalen Anwendung; es erfolgt keine Übertragung an Jev oder ein Frontier-LLM.</p>
-<div class="controls"><input id="file" type="file" accept=".txt,.md,.docx,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-<button id="clear" class="secondary">Zurücksetzen</button></div>
+<div class="controls file-toolbar">
+  <label class="file-action" for="file">Datei auswählen</label>
+  <input class="visually-hidden" id="file" type="file" accept=".txt,.md,.docx,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+  <span class="muted file-status" id="file-name">TXT, MD oder DOCX · keine Datei ausgewählt</span>
+  <button id="clear" class="secondary">Zurücksetzen</button>
+</div>
 <div class="cols">
-<div><h2 style="margin:16px 0 8px">Original</h2>
+<div class="text-source"><h2 class="text-field-label">Original</h2>
 <textarea id="original" spellcheck="false" placeholder="Vertraulichen Text hier eingeben …" aria-label="Originaltext"></textarea></div>
-<div><h2 style="margin:16px 0 8px">Bereinigte Fassung</h2>
+<div class="text-output"><h2 class="text-field-label">Bereinigte Fassung</h2>
 <textarea id="cleaned" spellcheck="false" placeholder="Hier erscheint das bereinigte Ergebnis; du kannst es manuell nachbearbeiten." aria-label="Bereinigter Text"></textarea></div>
 </div>
-<div class="controls"><button id="sanitize">Lokal bereinigen</button>
-<span class="muted" id="counts"></span></div>
-</section>
-<section>
-<h2>2 · Ergebnis überprüfen</h2>
-<div class="warning">
-<strong>Keine Garantie vollständiger Anonymität.</strong>
-<p>Automatische Erkennung übersieht möglicherweise Namen, Geschäftsgeheimnisse oder eindeutige Kombinationen aus Rolle, Ort, Datum und Sachverhalt. Kontrolliere den vollständigen Ausgabetext vor jeder Weitergabe. Zahlen und Datumsangaben bleiben normalerweise erhalten.</p>
-<p>Die Platzhalter sind innerhalb dieses Textes konsistent. Eine Rückübersetzungstabelle wird nicht gespeichert.</p>
+<div class="controls primary-workflow-action">
+<button id="sanitize">Lokal bereinigen</button>
+<span class="muted" id="counts" aria-live="polite"></span>
 </div>
+</section>
+<div class="review-export">
+<section class="review-stage">
+<h2>2 · Ergebnis prüfen und freigeben</h2>
+<p class="review-reminder">Automatische Erkennung kann vertrauliche Angaben übersehen. Prüfe den gesamten Ausgabetext.</p>
 <p id="summary" aria-live="polite"></p>
-<div class="controls">
-<label><input type="checkbox" id="reviewed"> Ich habe den vollständigen bereinigten Text kontrolliert und freigegeben.</label>
-</div>
+<label class="review-confirm"><input type="checkbox" id="reviewed"> Ich habe den bereinigten Text vollständig geprüft und freigegeben.</label>
+<details class="quiet-details"><summary>Grenzen der automatischen Bereinigung</summary>
+<p>Keine Garantie vollständiger Anonymität. Namen, Geschäftsgeheimnisse und indirekte Identifikatoren aus Rolle, Ort, Datum und Sachverhalt können unerkannt bleiben. Zahlen und Datumsangaben bleiben normalerweise erhalten. Platzhalter sind im Text konsistent; eine Rückübersetzungstabelle wird nicht gespeichert.</p>
+</details>
 </section>
-<section>
+<section class="export-stage">
 <h2>3 · Kopieren oder speichern</h2>
-<div class="controls">
-<button id="copy" disabled>Bereinigten Text kopieren</button>
+<div class="controls export-actions">
+<button id="copy" class="primary" disabled>Bereinigten Text kopieren</button>
 <button id="download" class="secondary" disabled>Als TXT speichern</button>
 </div>
-<small>Kein automatischer Versand an ein KI-Modell. Die Bereinigung ist unabhängig von der Jev-/jevos-v4-Auswahl im Inbox-Assistenten.</small>
+<small>Keine automatische Übertragung an eine externe KI.</small>
 <div id="status" role="status" aria-live="polite"></div>
 </section>
+</div>
 <script>
 "use strict";
 const TOKEN = "__SESSION_TOKEN__";
@@ -93,7 +97,7 @@ original.addEventListener("input",()=>{invalidate();cleaned.value="";$("counts")
 cleaned.addEventListener("input",invalidate);
 review.addEventListener("change",allow);
 $("clear").addEventListener("click",()=>{
- file.value="";original.value="";cleaned.value="";$("counts").textContent="";$("summary").textContent="";invalidate();status("Zurückgesetzt.");
+ file.value="";$("file-name").textContent="TXT, MD oder DOCX · keine Datei ausgewählt";original.value="";cleaned.value="";$("counts").textContent="";$("summary").textContent="";invalidate();status("Zurückgesetzt.");
 });
 file.addEventListener("change",async()=>{
  invalidate();const requestRevision=revision;
@@ -101,6 +105,7 @@ file.addEventListener("change",async()=>{
  busy(1);
  try{
    const f=file.files?.[0];if(!f)return;
+   $("file-name").textContent=f.name;
    const ext=f.name.split(".").pop().toLowerCase();
    if(!["txt","md","docx"].includes(ext))throw new Error("Nur TXT, MD und DOCX werden unterstützt.");
    if(f.size>2_000_000)throw new Error("Datei größer als 2 MB.");
