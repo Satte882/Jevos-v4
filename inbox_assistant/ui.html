@@ -60,6 +60,7 @@ strong{font-weight:650}.kpi{color:#b9d0f0}#ref-panel{margin-top:12px}
   <h2>3 · Verschiebung vorbereiten</h2>
   <p class="muted">Erst nach deiner separaten Bestätigung wird ein vollständiges Vault-Backup erstellt und ein Ausführungsplan gespeichert. Die tatsächliche Verschiebung erfolgt nur über den Obsidian-Befehl der Erweiterung.</p>
   <button id="prepare" class="secondary">Freigegebene Notizen sichern und vorbereiten</button>
+  <button id="cancel-batch" class="secondary" hidden>Ausstehenden Stapel verwerfen</button>
   <div id="bridge" class="muted"></div>
 </section>
 <div id="message" role="status" aria-live="polite"></div>
@@ -116,6 +117,7 @@ async function refresh() {
   for(const row of rows) showNote(row,allFolders);
   const bridge = $("bridge"); bridge.replaceChildren();
   const b = state.bridge;
+  $("cancel-batch").hidden = b.status!=="awaiting-obsidian";
   if(b.status==="awaiting-obsidian") {
     bridge.append(elem("p","Stapel "+b.batch_id+" vorbereitet. Bitte Obsidian öffnen → Strg+P → „Freigegebene Inbox-Verschiebungen anwenden“ und dort bestätigen."));
     bridge.append(elem("p","Sicherung: "+b.backup.path+" ("+b.backup.files+" Dateien)"));
@@ -213,6 +215,11 @@ $("prepare").addEventListener("click",()=>run(async()=>{
     message(plan.moves.length+" Verschiebungen vorbereitet. Bitte Obsidian-Befehl aufrufen.");
     await refresh();
   } finally {$("prepare").disabled=false;}
+}));
+$("cancel-batch").addEventListener("click",()=>run(async()=>{
+  if(!confirm("Nicht ausgeführten Verschiebungsstapel verwerfen? Das Sicherungsarchiv bleibt erhalten."))return;
+  await api("/api/cancel",{confirm:"CANCEL"});
+  message("Stapel verworfen, keine Notizen verschoben."); await refresh();
 }));
 run(refresh);
 </script>
