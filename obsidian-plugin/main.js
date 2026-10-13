@@ -107,12 +107,24 @@ module.exports = class JevInboxBridge extends Plugin {
     if (!fs.existsSync(launcher) || !fs.statSync(launcher).isFile())
       throw new Error("Launcher fehlt. GitHub-Repository aktualisieren und Plugin-Einstellungen prüfen.");
     const child = spawn("powershell.exe",
-      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", launcher, "-View", view],
-      { cwd: repo, detached: true, windowsHide: true, stdio: "ignore" });
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", launcher, "-View", view],
+      { cwd: repo, windowsHide: true, stdio: ["ignore", "ignore", "pipe"] });
+    let stderr = "";
+    let spawnFailed = false;
+    child.stderr.on("data", data => {
+      // Bounded diagnostics, including parse errors before the script's catch block.
+      stderr = (stderr + data.toString()).slice(-4000);
+    });
     child.on("error", error => {
+      spawnFailed = true;
       new Notice("Jevos konnte nicht gestartet werden: " + error.message, 10000);
     });
-    child.unref();
+    child.on("close", code => {
+      if (code !== 0 && !spawnFailed) {
+        new Notice("Jevos konnte nicht gestartet werden (Exitcode " + code + "). " +
+          (stderr.trim() || "Launcher und Python-Installation prüfen."), 15000);
+      }
+    });
   }
   getRoot() {
     const adapter = this.app.vault.adapter;

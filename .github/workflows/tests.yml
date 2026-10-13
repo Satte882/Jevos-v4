@@ -27,7 +27,7 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Validate PowerShell syntax (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: powershell
         run: |
           Get-ChildItem scripts/*.ps1 | ForEach-Object {
             $tokens = $null
@@ -35,3 +35,7 @@ jobs:
             [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors) | Out-Null
             if ($errors) { throw "PowerShell syntax error in $($_.Name): $errors" }
           }
+      - name: Test Windows launcher routing and keyless startup
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./tests/test_launcher.ps1

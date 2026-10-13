@@ -56,4 +56,7 @@ Im richtigen Vault unter **Einstellungen → Community-Plugins** die Erweiterung
 - **Kein Symbol in Obsidian:** Wurde das Plugin im aktuell geöffneten Vault installiert und danach aktiviert bzw. neu geladen?
 - **Ein Terminal statt Browser:** Die alte Desktop-Verknüpfung zeigt noch auf `start-ui.ps1`; neue Verknüpfung erzeugen oder das Ziel korrigieren.
 - **Server öffnet sich nicht:** Port 8765, PowerShell und Python prüfen. Der Ein-Klick-Launcher zeigt bei Fehlern eine Windows-Meldung an.
+- **Klick ohne Reaktion:** Das Plugin meldet auch PowerShell-Startfehler und fehlgeschlagene Exitcodes direkt in Obsidian. Nach einem Plugin-Update die Erweiterung neu laden.
 - **Nur Test-Vault-Daten sichtbar:** Das liegt an deiner lokalen `config.json`, nicht am Launcher. Produktiven Vault nur nach separater Entscheidung konfigurieren.
+
+Der Hintergrundstart fragt nicht nach einem API-Schlüssel. Ohne vorhandenen Schlüssel bleibt die Oberfläche lokal nutzbar; der manuelle Start mit `start-ui.ps1` behält seine optionale Abfrage. Die Skripte werden in CI auch unter Windows PowerShell 5.1 geprüft, das Obsidian tatsächlich aufruft. In ausführbarem PowerShell-Text sind insbesondere typografische Zeichen in UTF-8-Dateien ohne BOM zu vermeiden.
