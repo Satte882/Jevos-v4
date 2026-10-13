@@ -18,6 +18,7 @@ if ((Test-Path -LiteralPath $target) -and -not $Force) {
 New-Item -ItemType Directory -Force -Path $target | Out-Null
 Copy-Item -LiteralPath (Join-Path $root "obsidian-plugin\manifest.json") -Destination $target -Force
 Copy-Item -LiteralPath (Join-Path $root "obsidian-plugin\main.js") -Destination $target -Force
+Copy-Item -LiteralPath (Join-Path $root "obsidian-plugin\styles.css") -Destination $target -Force
 Write-Host "Plugin kopiert: $target"
 Write-Host "In Obsidian unter Community-Plugins 'Jev Inbox Bridge' aktivieren."
 Write-Host "In Obsidian Community-Plugin deaktivieren/aktivieren, damit die neuen linken Symbole erscheinen."

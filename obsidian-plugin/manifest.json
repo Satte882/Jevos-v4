@@ -1,7 +1,7 @@
 {
   "id": "jev-inbox-bridge",
   "name": "Jev Inbox Bridge",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "minAppVersion": "1.4.0",
   "description": "Classify the active Inbox note, prepare selected text for local redaction, and apply approved moves safely.",
   "author": "Local MVP",

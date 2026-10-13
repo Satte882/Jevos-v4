@@ -242,8 +242,9 @@ module.exports = class JevInboxBridge extends Plugin {
           .catch(error => new Notice("Jevos: " + error.message, 10000));
       } catch (error) {new Notice("Jevos: " + error.message, 10000);}
     };
-    this.addRibbonIcon("bot", "Jevos – Aktuelle Inbox-Notiz einordnen", () => action("classify"));
-    this.addRibbonIcon("shield-check", "Jevos – Für KI vorbereiten", () => action("redact"));
+    const classifyIcon = this.addRibbonIcon("bot", "Jevos – Aktuelle Inbox-Notiz einordnen", () => action("classify"));
+    const redactIcon = this.addRibbonIcon("shield-check", "Jevos – Für KI vorbereiten", () => action("redact"));
+    for (const icon of [classifyIcon, redactIcon]) icon.classList?.add("jev-note-action");
     this.addCommand({id: "classify-active-note", name: "Aktuelle Inbox-Notiz einordnen", callback: () => action("classify")});
     this.addCommand({id: "prepare-active-text", name: "Für KI vorbereiten – Auswahl oder Notiz", callback: () => action("redact")});
     this.registerEvent(this.app.workspace.on("editor-menu", (menu, editor, view) => {

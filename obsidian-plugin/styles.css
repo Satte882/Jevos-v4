@@ -1,0 +1,21 @@
+.side-dock-ribbon-action.jev-note-action {
+  background-color: #fa9b8e !important;
+  color: #111111 !important;
+  opacity: 1;
+  border-radius: 6px;
+}
+
+.side-dock-ribbon-action.jev-note-action .svg-icon {
+  color: #111111 !important;
+  stroke: currentColor !important;
+  opacity: 1;
+}
+
+.side-dock-ribbon-action.jev-note-action:hover {
+  background-color: #ffb3a7 !important;
+}
+
+.side-dock-ribbon-action.jev-note-action:focus-visible {
+  outline: 2px solid #ffd45c;
+  outline-offset: 2px;
+}
