@@ -21,6 +21,8 @@ jobs:
         run: node tests/test_redaction_ui.cjs
       - name: Validate technology labels and info buttons
         run: node tests/test_tech_info.cjs
+      - name: Check compact UI layout and cloud consent behavior
+        run: node tests/test_compact_ui.cjs
       - name: Test Obsidian one-click launcher
         run: node tests/test_launcher.cjs
       - name: Run synthetic Obsidian bridge preflight
