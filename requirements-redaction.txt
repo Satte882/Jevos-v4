@@ -1,0 +1,2 @@
+# Nur für lokale Named-Entity-Erkennung. Kein Clouddienst.
+spacy>=3.8,<4
