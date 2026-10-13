@@ -10,6 +10,25 @@ from inbox_assistant.bridge import bridge_status
 class SingleNoteTests(unittest.TestCase):
     setUp = test_inbox.InboxTests.setUp
 
+    @patch("inbox_assistant.service.JevosClient")
+    def test_document_backup_excludes_media_and_records_recovery(self, client):
+        import zipfile
+        client.return_value = test_inbox.DummyModel()
+        one = self.service.index.inbox_notes[0].source
+        (self.vault / "recording.mp4").write_bytes(b"large media must never enter the archive")
+        (self.vault / "Board.canvas").write_text('{"nodes":[]}', encoding="utf8")
+        self.service.analyze("local", source=one)
+        self.service.decide(one, "approved", "Wissen/KI")
+        plan = self.service.prepare(source=one)
+        self.assertEqual(plan["backup"]["scope"], "link-documents")
+        with zipfile.ZipFile(plan["backup"]["path"]) as archive:
+            self.assertNotIn("recording.mp4", archive.namelist())
+            self.assertIn("Board.canvas", archive.namelist())
+            self.assertIn(one, archive.namelist())
+            manifest = json.loads(archive.read("_jev_recovery.json"))
+            self.assertEqual(manifest["moves"], plan["moves"])
+            self.assertEqual(manifest["entries"], plan["backup"]["entries"])
+
     def second_note(self):
         file = self.inbox / "Zweite.md"
         file.write_text("Sports and running.", encoding="utf8")

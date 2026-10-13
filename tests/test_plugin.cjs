@@ -48,6 +48,19 @@ try {
   fs.writeFileSync(input,"changed");
   assert.throws(()=>plugin.preflightOne(plan.moves[0],plan,vault),/geändert/);
   fs.writeFileSync(input,text);
+  const entry={source,sha256:sha(Buffer.from(text))};
+  const scoped={...plan,backup:{...plan.backup,scope:"link-documents",entries:[entry]}};
+  app.vault.getFiles=()=>[{path:source,extension:"md"}];
+  plugin.preflight(scoped,repo,vault);
+  app.vault.getFiles=()=>[{path:source,extension:"md"},{path:"New.md",extension:"md"}];
+  assert.throws(()=>plugin.preflight(scoped,repo,vault),/Neue Notiz/);
+  app.vault.getFiles=()=>[{path:source,extension:"md"}];
+  fs.writeFileSync(input,"changed after backup");
+  assert.throws(()=>plugin.preflight(scoped,repo,vault),/seit der Sicherung geändert/);
+  fs.writeFileSync(input,text);
+  const originalRead=fs.readFileSync;
+  fs.readFileSync=function(file,...args){if(file===backup)throw Error("Backup must be streamed");return originalRead.call(fs,file,...args);};
+  try {plugin.preflight(plan,repo,vault);} finally {fs.readFileSync=originalRead;}
   assert.throws(()=>plugin.preflight({...plan,vault:repo},repo,vault),/anderen Vault/);
   assert.throws(()=>plugin.preflight({...plan,backup:{...plan.backup,sha256:"0".repeat(64)}},repo,vault),/Sicherung/);
   console.log("Obsidian bridge preflight: synthetic filesystem tests OK");

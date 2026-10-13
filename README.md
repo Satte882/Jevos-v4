@@ -11,9 +11,9 @@
 
 ## Tägliche Nutzung – ohne VS Code
 
-Obsidian bleibt der Arbeitsplatz. Das Plugin **Jev Inbox Bridge 0.2.0** bietet in der linken Leiste, der Befehlspalette und im Editor-Kontextmenü zwei Aktionen:
+Obsidian bleibt der Arbeitsplatz. Das Plugin **Jev Inbox Bridge 0.2.1** bietet in der linken Leiste, der Befehlspalette und im Editor-Kontextmenü zwei Aktionen:
 
-- **Bot – Einordnen:** Die aktuelle Markdown-Notiz direkt in der konfigurierten Inbox speichern, lokal analysieren und Zielordner samt verwendeten Referenzpassagen in Obsidian prüfen. Bei Unsicherheit bleibt das Ziel leer. „Bestätigen und sichern“ erstellt das vollständige Vault-Backup für ausschließlich diese Notiz; erst „Jetzt verschieben“ im zweiten Dialog verschiebt sie. Abbrechen verwirft den Einzelplan und behält das Backup.
+- **Bot – Einordnen:** Die aktuelle Markdown-Notiz direkt in der konfigurierten Inbox speichern, lokal analysieren und Zielordner samt verwendeten Referenzpassagen in Obsidian prüfen. Bei Unsicherheit bleibt das Ziel leer. „Bestätigen und sichern“ erstellt das Notiz- und Canvas-Backup für ausschließlich diese Notiz; erst „Jetzt verschieben“ im zweiten Dialog verschiebt sie. Abbrechen verwirft den Einzelplan und behält das Backup.
 - **Schild – Für KI vorbereiten:** Markierten Text oder andernfalls den gesamten aktuellen Notizinhalt an die lokale Textbereinigung übergeben. In der Leseansicht wird die ganze Notiz verwendet. Die Originalnotiz wird durch diese Aktion weder gespeichert noch verändert. Die bestehende Bereinigungsansicht zeigt die Herkunft und berechnet automatisch eine Vorschau; vor Kopieren oder Export ist deine Prüfung erforderlich.
 
 Der Dienst startet bei Bedarf im Hintergrund. Vault und konfigurierte Inbox müssen für die Einordnung übereinstimmen; das Plugin ändert die Konfiguration nicht. Die Modellauswahl startet lokal, Cloud erfordert die ausdrückliche Freigabe für diesen Auftrag. Es gibt keine automatische Umschaltung oder Übertragung an ein externes LLM.
@@ -92,7 +92,7 @@ Dadurch werden spaCy und das deutsche Sprachmodell `de_core_news_md` in der loka
 
 1. **Analyse starten:** Jev-Provider und maximale Notizzahl wählen. Der lokale Index ermittelt zunächst bis zu **acht** Zielkandidaten; maximal **fünf** davon gehen an das Entscheidungsmodell. Je Ziel werden höchstens **zwei** Referenzpassagen à 180 Zeichen berücksichtigt. Bei langen Notizen werden relevante Originalpassagen aus dem gesamten Text (maximal 1.400 Zeichen) ausgewählt. Die Analyse läuft **nach manuellem Start** in einem Hintergrund-Thread mit Fortschritt pro Notiz, ohne dass die Oberfläche blockiert.
 2. **Fundstellen und Vorschläge prüfen:** Links eine Inbox-Datei wählen; rechts Originalauszüge, bis zu drei Zielalternativen samt **Modellwerten (keine empirisch gemessenen Trefferquoten)** und die tatsächlich an das Modell übergebenen Referenzpassagen vergleichen. Der vollständige Notiztext lässt sich separat öffnen. Bei mehrdeutigen Zielen wird **kein Ordner vorausgewählt**. Bestätigen, einen anderen vorhandenen Ordner wählen oder zurückstellen. Referenznotizen können optional bevorzugt oder ausgeschlossen werden; danach erneut analysieren.
-3. **Verschiebung vorbereiten und in Obsidian freigeben:** Nach Browser-Bestätigung wird ein vollständiges Vault-Backup als ZIP erstellt und ein Ausführungsplan gespeichert. Die tatsächliche Verschiebung erfolgt **erst** über den Obsidian-Befehl **„Freigegebene Inbox-Verschiebungen anwenden“** mit zweiter ausdrücklicher Bestätigung. Das Plugin übernimmt Verschieben und Aktualisieren interner Links.
+3. **Verschiebung vorbereiten und in Obsidian freigeben:** Nach Browser-Bestätigung wird ein Notiz- und Canvas-Backup als ZIP erstellt und ein Ausführungsplan gespeichert. Die tatsächliche Verschiebung erfolgt **erst** über den Obsidian-Befehl **„Freigegebene Inbox-Verschiebungen anwenden“** mit zweiter ausdrücklicher Bestätigung. Das Plugin übernimmt Verschieben und Aktualisieren interner Links.
 
 Weitere Details: Archiv- und Backlog-Ordner sind bei der **automatischen Vorauswahl** standardmäßig ausgeschlossen, lassen sich aber explizit einbeziehen oder manuell als Ziel auswählen. Bei einer Neuanalyse werden alte Vorschläge und Freigaben der erneut analysierten Notizen zurückgesetzt; Fehler werden pro Notiz angezeigt. Die lokalen Ergebnisse sind unter `.local/vault-state/` **je Vault getrennt** gespeichert. Das Zeitlimit für eine lokale Modellabfrage beträgt 90 Sekunden; bei Verbindungs-/Zeitproblemen wird nicht unkontrolliert weiter angefragt.
 
@@ -118,3 +118,9 @@ Standardmäßig liest der Installer den Vault-Pfad aus `config.json` (falls vorh
 **Nicht geplant:** Die früher vorgesehene lesende Outlook-Anbindung ist kein Bestandteil der aktuellen Lösung; der Entwurf bleibt als [optionale Ideenskizze](docs/OUTLOOK.md) dokumentiert.
 
 **Referenzen:** [TypeSafe Console](https://console.typesafe.ai/keys) · [jevos-v4 Release](https://github.com/feder-cr/jev/releases/tag/jevos-v4) · [Obsidian API](https://github.com/obsidianmd/obsidian-api).
+
+### Sicherung beim Einordnen ab 0.2.1
+
+Vor dem Verschieben werden vorsichtshalber alle Markdown- und Canvas-Dateien gesichert, da Obsidian Links auch außerhalb der analysierten Referenznotizen ändern kann. Videos, PDFs und andere Anhänge werden nicht kopiert. Das ZIP enthält die unveränderten Originaldokumente sowie `_jev_recovery.json` mit ursprünglichem Pfad, Zielpfad und Prüfsummen. Für eine manuelle Rücknahme die verschobene Datei zunächst über Obsidian an ihren ursprünglichen Pfad zurückverschieben und anschließend betroffene Originaldokumente aus der Sicherung wiederherstellen; spätere eigene Änderungen vorher separat sichern. Es gibt noch keine automatische Rücknahme. Regelmäßige vollständige Vault-Backups bleiben eine separate Aufgabe; das Plugin richtet dafür keinen Zeitplan ein.
+
+Die Backup-Prüfung liest Daten in kleinen Blöcken. Änderungen an gesicherten Dokumenten oder neue Notizen nach der Sicherung verhindern die Ausführung und verlangen eine erneute Bestätigung. Fehler vor der Ausführung verwerfen den gerade erstellten Einzelplan und behalten die Sicherung.

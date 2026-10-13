@@ -73,6 +73,17 @@ async function main(){
   await modal.prepare();assert.equal(plugin.reviewModal,null);
   assert.equal(requests.find(r=>r.route==="/api/prepare").data.source,file.path);
   assert.equal(requests.find(r=>r.route==="/api/cancel").data.batch_id,"single-batch");
+  await plugin.classifyNote(plugin.captureNote());
+  const failed=plugin.reviewModal;
+  failed.analysis=analysis;failed.showResult(["Knowledge","Other"]);
+  failed.destination="Knowledge";failed.updateTarget();
+  plugin.apply=async()=>{throw new Error("Simulated preflight failure");};
+  const beforeFailure=requests.length;
+  await failed.prepare();
+  assert.equal(requests.slice(beforeFailure).find(r=>r.route==="/api/cancel").data.batch_id,"single-batch");
+  assert.match(failed.statusEl.textContent,/Plan verworfen/);
+  assert.equal(failed.approveButton.disabled,false);
+  failed.close();
   plugin.connection=async()=>({token:"test",vault:path.join(temporary,"wrong"),inbox});
   await assert.rejects(plugin.classifyNote(plugin.captureNote()),/anderen Vault/);
   plugin.connection=async()=>({token:"test",vault:root,inbox:"OtherInbox"});

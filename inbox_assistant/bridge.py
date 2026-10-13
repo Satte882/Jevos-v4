@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import uuid
 import zipfile
@@ -10,44 +11,6 @@ from pathlib import Path
 
 from .index import safe_path, file_sha
 from .store import atomic_json, load
-
-
-def backup_vault(vault: Path, destination: Path) -> dict:
-    """Vor jeglicher Ausführung vollständiges ZIP erzeugen und CRC lesen."""
-    if destination.resolve().is_relative_to(vault):
-        raise ValueError("Backups dürfen nicht im Vault liegen.")
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_suffix(".partial")
-    try:
-        count = 0
-        with zipfile.ZipFile(temporary, mode="w", compression=zipfile.ZIP_DEFLATED,
-                             compresslevel=3, allowZip64=True) as archive:
-            for directory, dirs, files in os.walk(vault, followlinks=False):
-                root = Path(directory)
-                if root.is_symlink():
-                    raise ValueError("Symlink im Vault; vollständiges Backup nicht verifizierbar.")
-                dirs.sort()
-                files.sort()
-                for child in dirs:
-                    if (root / child).is_symlink():
-                        raise ValueError("Symlink im Vault; Backup wird abgebrochen.")
-                for name in files:
-                    file = root / name
-                    if file.is_symlink():
-                        raise ValueError("Symlink im Vault; Backup wird abgebrochen.")
-                    if not file.is_file():
-                        continue
-                    archive.write(file, arcname=file.relative_to(vault).as_posix())
-                    count += 1
-        with zipfile.ZipFile(temporary, "r") as archive:
-            if archive.testzip() is not None or len(archive.namelist()) != count:
-                raise ValueError("Backup-Integritätsprüfung fehlgeschlagen.")
-        os.replace(temporary, destination)
-        with destination.open("rb") as stream:
-            sha = hashlib.file_digest(stream, "sha256").hexdigest()
-        return {"path": str(destination), "sha256": sha, "files": count}
-    finally:
-        temporary.unlink(missing_ok=True)
 
 
 def stage_moves(index, state: dict, bridge_dir: Path, backup_dir: Path, decisions: dict) -> dict:
@@ -82,7 +45,7 @@ def stage_moves(index, state: dict, bridge_dir: Path, backup_dir: Path, decision
         raise ValueError("Keine bestätigten Notizen zum Verschieben vorhanden.")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     backup_path = backup_dir / f"obsidian-{stamp}-{uuid.uuid4().hex[:8]}.zip"
-    backup = backup_vault(index.root, backup_path)
+    backup = backup_notes(index.root, backup_path, moves)
     plan = {
         "version": 1,
         "batch_id": uuid.uuid4().hex,
@@ -98,6 +61,53 @@ def stage_moves(index, state: dict, bridge_dir: Path, backup_dir: Path, decision
     atomic_json(pending_file, plan)
     result_file.unlink(missing_ok=True)
     return plan
+
+
+def backup_notes(vault: Path, destination: Path, moves: list) -> dict:
+    """Save editable link-bearing documents, never large media attachments.
+
+    Conservatively include every Markdown/Canvas document: Obsidian resolves
+    links and may rewrite documents beyond the backend's reference index.
+    The manifest records exact originals and both paths for manual recovery.
+    """
+    if destination.resolve().is_relative_to(vault):
+        raise ValueError("Backups dürfen nicht im Vault liegen.")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_suffix(".partial")
+    entries = []
+    try:
+        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED,
+                             compresslevel=1, allowZip64=True) as archive:
+            for directory, dirs, files in os.walk(vault, followlinks=False):
+                root = Path(directory)
+                dirs[:] = sorted(d for d in dirs if d not in {".obsidian", ".git", ".trash", ".local"})
+                if any((root / d).is_symlink() for d in dirs):
+                    raise ValueError("Symlink im Vault; Notizsicherung nicht verifizierbar.")
+                for name in sorted(files):
+                    file = root / name
+                    if file.suffix.lower() not in {".md", ".canvas"}:
+                        continue
+                    if file.is_symlink():
+                        raise ValueError("Symlink in Notizen; Sicherung wird abgebrochen.")
+                    data = file.read_bytes()
+                    source = file.relative_to(vault).as_posix()
+                    archive.writestr(source, data)
+                    entries.append({"source": source, "sha256": hashlib.sha256(data).hexdigest()})
+            original_hashes = {e["source"]: e["sha256"] for e in entries}
+            if any(original_hashes.get(m["source"]) != m["sha256"] for m in moves):
+                raise ValueError("Notiz während der Sicherung geändert; erneut prüfen.")
+            archive.writestr("_jev_recovery.json", json.dumps({"vault": str(vault), "moves": moves,
+                              "entries": entries}, ensure_ascii=False, indent=2))
+        with zipfile.ZipFile(temporary) as archive:
+            if archive.testzip() is not None:
+                raise ValueError("Notizsicherung beschädigt.")
+        os.replace(temporary, destination)
+        with destination.open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        return {"path": str(destination), "sha256": digest, "files": len(entries),
+                "scope": "link-documents", "entries": entries}
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def bridge_status(bridge_dir: Path) -> dict:

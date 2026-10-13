@@ -92,7 +92,12 @@ class ReviewNote extends Modal {
       dropdown.setValue(this.destination).onChange(value => {this.destination = value; this.updateTarget();});
     });
     this.evidenceEl = this.resultsEl.createDiv();
-    new Setting(this.resultsEl).addButton(button => {
+    const actions = new Setting(this.resultsEl);
+    actions.settingEl.style.position = "sticky";
+    actions.settingEl.style.bottom = "0";
+    actions.settingEl.style.background = "var(--background-primary)";
+    actions.settingEl.style.zIndex = "1";
+    actions.addButton(button => {
       this.approveButton = button;
       button.setButtonText("Bestätigen und sichern").setCta().onClick(() => this.prepare());
     }).addButton(button => {
@@ -127,11 +132,12 @@ class ReviewNote extends Modal {
       const file = this.plugin.app.vault.getAbstractFileByPath(this.snapshot.source);
       if (!file || sha(path.join(this.snapshot.root, this.snapshot.source)) !== this.snapshot.sha256)
         throw new Error("Notiz seit der Analyse geändert. Bitte erneut aus Obsidian starten.");
-      this.statusEl.setText("Ziel wird bestätigt und der vollständige Vault gesichert…");
+      this.statusEl.setText("Notizen und Canvas-Dateien werden für mögliche Linkänderungen gesichert…");
       await this.plugin.api(this.connection, "/api/decide", {source: this.snapshot.source,
         expected_sha256: this.snapshot.sha256, status: "approved", destination: this.destination});
       plan = await this.plugin.api(this.connection, "/api/prepare", {confirm: "PREPARE",
         source: this.snapshot.source, expected_sha256: this.snapshot.sha256});
+      this.statusEl.setText("Sicherung erstellt. Verschiebung bitte im zweiten Dialog freigeben.");
       const outcome = await this.plugin.apply(plan.batch_id);
       if (outcome === "cancelled") {
         await this.plugin.api(this.connection, "/api/cancel", {confirm: "CANCEL", batch_id: plan.batch_id});
@@ -139,7 +145,12 @@ class ReviewNote extends Modal {
       }
       this.close();
     } catch (error) {
-      this.statusEl.setText(error.message + (plan ? " Der gesicherte Plan bleibt zur Prüfung erhalten." : ""));
+      if (plan) {
+        try {
+          await this.plugin.api(this.connection, "/api/cancel", {confirm: "CANCEL", batch_id: plan.batch_id});
+          this.statusEl.setText(error.message + " Plan verworfen; Sicherung bleibt erhalten.");
+        } catch (_) {this.statusEl.setText(error.message + " Der gesicherte Plan bleibt zur Prüfung erhalten.");}
+      } else this.statusEl.setText(error.message);
     } finally {
       this.running = false;
       if (this.active) {this.startButton.setDisabled(false); this.deferButton.setDisabled(false);
@@ -157,7 +168,14 @@ function within(root, target) {
   return p.startsWith(path.resolve(root) + path.sep) && !target.split("/").some(x => !x || x === "." || x === ".." || x.includes("\\"));
 }
 function sha(file) {
-  return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+  const digest = crypto.createHash("sha256");
+  const fd = fs.openSync(file, "r");
+  try {
+    const block = Buffer.allocUnsafe(1024 * 1024);
+    let count;
+    while ((count = fs.readSync(fd, block, 0, block.length, null)) > 0) digest.update(block.subarray(0, count));
+    return digest.digest("hex");
+  } finally {fs.closeSync(fd);}
 }
 function atomicJson(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -367,6 +385,7 @@ module.exports = class JevInboxBridge extends Plugin {
     if (!(backupPath.startsWith(backupRoot + path.sep)) ||
         !fs.existsSync(backupPath) || sha(backupPath) !== plan.backup.sha256)
       throw new Error("Sicherung nicht vorhanden oder SHA-256 ungültig.");
+    if (plan.backup.scope === "link-documents") this.checkDocumentBackup(plan, root);
     for (const move of plan.moves) {
       if (!move || typeof move.source !== "string" || typeof move.target !== "string" ||
           !within(root, move.source) || !within(root, move.target) ||
@@ -407,6 +426,7 @@ module.exports = class JevInboxBridge extends Plugin {
     this.preflight(plan, repo, root);
     const accepted = await new Promise(resolve => new ConfirmMoves(this.app, plan, resolve).open());
     if (!accepted) return "cancelled";
+    if (plan.backup.scope === "link-documents") this.checkDocumentBackup(plan, root);
     const result = {batch_id: plan.batch_id, finished_at: null, results: []};
     for (const move of plan.moves) {
       try {
@@ -438,5 +458,23 @@ module.exports = class JevInboxBridge extends Plugin {
     if (!fs.existsSync(src) || sha(src) !== move.sha256)
       throw new Error("Quelldatei seit Freigabe geändert.");
     if (fs.existsSync(dst)) throw new Error("Ziel bereits vorhanden.");
+  }
+  checkDocumentBackup(plan, root) {
+    const entries = plan.backup.entries;
+    if (!Array.isArray(entries) || !entries.length) throw new Error("Notizsicherung enthält keinen Nachweis.");
+    const saved = new Map();
+    for (const entry of entries) {
+      if (!within(root, entry.source) || !/\.(md|canvas)$/i.test(entry.source) ||
+          !/^[a-f0-9]{64}$/.test(entry.sha256) || saved.has(entry.source))
+        throw new Error("Ungültiger Notizsicherungsnachweis.");
+      saved.set(entry.source, entry.sha256);
+      const file = path.join(root, ...entry.source.split("/"));
+      if (!fs.existsSync(file) || sha(file) !== entry.sha256)
+        throw new Error("Notiz seit der Sicherung geändert; bitte erneut bestätigen: " + entry.source);
+    }
+    for (const file of this.app.vault.getFiles()) {
+      if (["md", "canvas"].includes(file.extension) && !saved.has(file.path))
+        throw new Error("Neue Notiz seit der Sicherung; bitte erneut bestätigen: " + file.path);
+    }
   }
 };
