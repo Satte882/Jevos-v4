@@ -41,8 +41,8 @@ class CliTests(unittest.TestCase):
         client_type.return_value.classify.return_value = {
             "task": 0.88, "idea": 0.05, "decision": 0.1
         }
-        self.assertEqual(main(["demo"]), 0)
-        self.assertEqual(client_type.return_value.classify.call_count, 6)
+        self.assertEqual(main(["--provider", "local", "demo", "--mode", "noul"]), 0)
+        self.assertEqual(client_type.return_value.ask.call_count, 6)
 
     @patch("jevos_local.cli.JevosClient")
     def test_vault_reads_without_write(self, client_type):
@@ -53,7 +53,7 @@ class CliTests(unittest.TestCase):
             root = Path(temp)
             note = root / "notiz.md"
             note.write_text("A note", encoding="utf-8")
-            self.assertEqual(main(["vault", "--vault", str(root), "--limit", "1"]), 0)
+            self.assertEqual(main(["--provider", "local", "vault", "--vault", str(root), "--limit", "1", "--mode", "noul"]), 0)
             self.assertEqual(note.read_text(encoding="utf-8"), "A note")
             self.assertEqual(list(root.iterdir()), [note])
 
