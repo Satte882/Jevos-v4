@@ -85,6 +85,39 @@ class RedactionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             extract_docx(b"x" * 2_000_001)
 
+    def test_earlier_ner_span_does_not_leave_email_suffix(self):
+        text = "Anna anna@example.de meldet sich."
+        result = redact(text, entities=[Finding(0, 9, "PERSON", text[:9], 10)])
+        self.assertEqual(result["text"], "[EMAIL_1] meldet sich.")
+        self.assertNotIn("example.de", result["text"])
+
+    def test_overlapping_name_cannot_hide_secret(self):
+        text = "Anna API_KEY: abcdefghijklmnop meldet sich."
+        result = redact(text, entities=[Finding(0, 8, "PERSON", text[:8], 10)])
+        self.assertEqual(result["text"], "[SECRET_1] meldet sich.")
+
+    def test_docx_utf16_entities_rejected(self):
+        xml = ('<?xml version="1.0" encoding="UTF-16"?>'
+               '<!DOCTYPE document [<!ENTITY secret "sensitive">]>'
+               '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+               '<w:body><w:p><w:r><w:t>&secret;</w:t></w:r></w:p></w:body></w:document>')
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("word/document.xml", xml.encode("utf-16"))
+        with self.assertRaisesRegex(ValueError, "XML-Entitäten"):
+            extract_docx(out.getvalue())
+
+    def test_repeat_name_when_ner_only_detects_second_occurrence(self):
+        text = "Anna Meier schreibt. ANNA  MEIER antwortet."
+        start = text.index("ANNA")
+        result = redact(text, entities=[Finding(start, start+11, "PERSON", "ANNA  MEIER", 10)])
+        self.assertEqual(result["text"], "[PERSON_1] schreibt. [PERSON_1] antwortet.")
+
+    def test_known_name_is_not_replaced_inside_longer_word(self):
+        text = "Anna trifft Annabelle."
+        result = redact(text, entities=[Finding(0, 4, "PERSON", "Anna", 10)])
+        self.assertEqual(result["text"], "[PERSON_1] trifft Annabelle.")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -27,7 +27,8 @@ def extract_docx(data: bytes) -> str:
                     raise ValueError("DOCX-Haupttext ist zu groß.")
     except (zipfile.BadZipFile, KeyError, OSError) as exc:
         raise ValueError("Keine gültige DOCX-Datei mit lesbarem Haupttext.") from exc
-    if b"<!DOCTYPE" in xml.upper() or b"<!ENTITY" in xml.upper():
+    declarations = xml.replace(b"\x00", b"").upper()
+    if b"<!DOCTYPE" in declarations or b"<!ENTITY" in declarations:
         raise ValueError("XML-Entitäten im Dokument werden nicht unterstützt.")
     try:
         root = ElementTree.fromstring(xml)

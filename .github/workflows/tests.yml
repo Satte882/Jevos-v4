@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Validate Python modules
-        run: python -m compileall -q inbox_assistant jevos_local
+        run: python -m compileall -q inbox_assistant jevos_local redaction_app
       - name: Validate Obsidian plugin JavaScript
         run: node --check obsidian-plugin/main.js
       - name: Validate redaction view JavaScript

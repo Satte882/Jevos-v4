@@ -15,6 +15,8 @@
 
 Keine automatische Weitergabe, kein Frontier-LLM-Schlüssel und kein Export des Originaltexts. Die Bereinigung speichert Original, Ersetzungen und Rückübersetzungstabelle nicht auf der Festplatte.
 
+Für die Windows-Zwischenablage wurde das Kopieren in Microsoft Edge geprüft. Im eingebetteten Codex-Browser kam bei der lokalen Abnahme trotz Erfolgsmeldung kein Text in der Windows-Zwischenablage an; dort den TXT-Export oder einen externen Browser verwenden.
+
 ## Einmalige Einrichtung (Windows)
 
 In PowerShell im Repository:
@@ -36,6 +38,8 @@ Keine separate Webanwendung, kein zusätzlicher Port, keine Cloud-API erforderli
 - Reguläre Ausdrücke: E-Mail-Adressen, URLs, Telefonnummern, deutsche IBAN, IPv4-Adressen, gängige API-Schlüssel und einfache `PASSWORD:`/`API_KEY:`-Zuweisungen.
 - Lokale Named Entity Recognition (Deutsch): Personen, Organisationen, Orte.
 - Wiederkehrende identische Textstellen bekommen denselben Platzhalter, z. B. `[PERSON_1]`, `[UNTERNEHMEN_1]`, `[EMAIL_1]`.
+- Sobald eine Entität erkannt wurde, werden auch ihre wörtlichen Wiederholungen ersetzt (einschließlich Groß-/Kleinschreibung und unterschiedlicher Leerzeichen). Nie erkannte Namen und andere Namensvarianten können weiterhin übersehen werden.
+- Überlappende Treffer werden vollständig abgedeckt; die Kategorie mit höherer Priorität bestimmt den Platzhalter. Damit bleiben keine Teile einer E-Mail oder eines Secrets wegen eines überlappenden Namenstreffers ungeschützt.
 - Datum, Betrag und sonstiger Sachinhalt bleiben **standardmäßig erhalten**, damit ein Frontier-LLM mit dem Text arbeiten kann.
 - DOCX wird **nur als Text** aus dem Hauptdokument extrahiert; Formatierung, Anhänge, Kommentare, Kopf-/Fußzeilen und Dokumentmetadaten werden nicht exportiert. Für Bilder/OCR, PDFs und Tabellenformatierung besteht im MVP kein Anspruch.
 
@@ -47,6 +51,7 @@ Keine separate Webanwendung, kein zusätzlicher Port, keine Cloud-API erforderli
 - **Keine Garantie gegen Geheimnislecks:** Manche Zugangsdaten entsprechen nicht den bekannten Tokenformaten. Zugangsdaten sollten generell nicht in externe LLMs kopiert werden.
 - **Keine persistente Rückübersetzungstabelle:** Platzhalter sind konsistent pro Bereinigung, die Zuordnung bleibt nicht erhalten.
 - **Keine automatische Exportfreigabe:** Nach jeder Bearbeitung der bereinigten Fassung muss die manuelle Bestätigung erneut erfolgen.
+- **Keine veralteten Ergebnisse:** Während Import/Bereinigung ist die Exportfreigabe gesperrt. Antworten für inzwischen geänderte oder zurückgesetzte Eingaben werden verworfen.
 - **Keine Dokumentautomatisierung:** Es entsteht Klartext, kein editierbares DOCX mit originaler Formatierung.
 - **Nur deutsche NER-Pipeline:** Für stark englische oder mehrsprachige Inhalte ist eine weitere Qualitätsprüfung nötig.
 

@@ -71,10 +71,16 @@ const file = $("file"), copy = $("copy"), download = $("download"), review = $("
 const status = (text, error=false) => {
  $("status").textContent=text; $("status").className=error?"error":"";
 };
-const invalidate = () => {review.checked=false; copy.disabled=true; download.disabled=true;};
+let revision=0, pending=0;
+const invalidate = () => {revision++;review.checked=false; copy.disabled=true; download.disabled=true;};
 const allow = () => {
- const enabled=review.checked && cleaned.value.trim().length>0;
+ const enabled=!pending && review.checked && cleaned.value.trim().length>0;
  copy.disabled=!enabled;download.disabled=!enabled;
+};
+const busy = delta => {
+ pending+=delta;
+ review.disabled=pending>0;$("sanitize").disabled=pending>0;
+ allow();
 };
 async function api(path, data){
  const res=await fetch(path,{method:"POST",headers:{"X-Session-Token":TOKEN,"Content-Type":"application/json"},body:JSON.stringify(data)});
@@ -89,8 +95,10 @@ $("clear").addEventListener("click",()=>{
  file.value="";original.value="";cleaned.value="";$("counts").textContent="";$("summary").textContent="";invalidate();status("Zurückgesetzt.");
 });
 file.addEventListener("change",async()=>{
+ invalidate();const requestRevision=revision;
+ cleaned.value="";$("summary").textContent="";$("counts").textContent="";
+ busy(1);
  try{
-   invalidate();cleaned.value="";$("summary").textContent="";
    const f=file.files?.[0];if(!f)return;
    const ext=f.name.split(".").pop().toLowerCase();
    if(!["txt","md","docx"].includes(ext))throw new Error("Nur TXT, MD und DOCX werden unterstützt.");
@@ -103,27 +111,33 @@ file.addEventListener("change",async()=>{
        reader.readAsDataURL(f);
      });
      const data=await api("/api/docx-text",{filename:f.name,data:base64});
+     if(requestRevision!==revision)return;
      original.value=data.text;
      status("DOCX-Haupttext extrahiert. Text vor der Bereinigung prüfen; Bilder, Kommentare und Metadaten werden nicht exportiert.");
    }else{
-     original.value=await f.text();
-     if(original.value.length>100_000)throw new Error("Text überschreitet 100.000 Zeichen.");
+     const text=await f.text();
+     if(requestRevision!==revision)return;
+     if(text.length>100_000)throw new Error("Text überschreitet 100.000 Zeichen.");
+     original.value=text;
      status("Datei lokal eingelesen.");
    }
- }catch(err){original.value="";status(err.message,true);}
+ }catch(err){if(requestRevision===revision){original.value="";status(err.message,true);}}
+ finally{busy(-1);}
 });
 $("sanitize").addEventListener("click",async()=>{
  invalidate();cleaned.value="";
- $("sanitize").disabled=true;
+ $("counts").textContent="";$("summary").textContent="";
+ const requestRevision=revision;busy(1);
  try{
    const result=await api("/api/redact",{text:original.value});
+   if(requestRevision!==revision)return;
    cleaned.value=result.text;
    $("counts").textContent=result.replacements+" erkannte Fundstellen";
    const stats=Object.entries(result.categories).map(([name,count])=>name+": "+count).join(" · ");
    $("summary").textContent=stats || "Keine Treffer erkannt – insbesondere sorgfältig manuell prüfen.";
    status("Lokal verarbeitet. Bitte den gesamten Ausgabetext kontrollieren.");
- }catch(err){status(err.message,true);}
- finally{$("sanitize").disabled=false;}
+ }catch(err){if(requestRevision===revision)status(err.message,true);}
+ finally{busy(-1);}
 });
 copy.addEventListener("click",async()=>{
  if(copy.disabled)return;

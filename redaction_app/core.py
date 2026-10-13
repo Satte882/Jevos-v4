@@ -88,6 +88,23 @@ def _regex_findings(text: str) -> list[Finding]:
     return result
 
 
+def _repeat_entities(text: str, findings: list[Finding]) -> list[Finding]:
+    """Bekannte Entitäten auch an vom NER übersehenen Wiederholungen ersetzen."""
+    result = list(findings)
+    seen: set[tuple[str, str]] = set()
+    for item in findings:
+        key = (item.label, " ".join(item.original.casefold().split()))
+        if key in seen or not key[1]:
+            continue
+        seen.add(key)
+        literal = r"\s+".join(re.escape(part) for part in item.original.split())
+        pattern = re.compile(r"(?<!\w)" + literal + r"(?!\w)", re.IGNORECASE)
+        for match in pattern.finditer(text):
+            result.append(Finding(match.start(), match.end(), item.label,
+                                  match.group(), item.priority))
+    return result
+
+
 def redact(text: str, *, entities: list[Finding] | None = None) -> dict:
     """Text bereinigen; Metadaten enthalten keine Originaltreffer.
 
@@ -98,18 +115,23 @@ def redact(text: str, *, entities: list[Finding] | None = None) -> dict:
     if len(text) > MAX_TEXT_CHARS:
         raise ValueError(f"Maximal {MAX_TEXT_CHARS:,} Zeichen sind erlaubt.")
 
-    detected = _regex_findings(text) + (_ner(text) if entities is None else entities)
-    # Überlappungen: möglichst großer Treffer mit höher priorisierter Kategorie.
+    entity_findings = _ner(text) if entities is None else entities
+    detected = _regex_findings(text) + _repeat_entities(text, entity_findings)
+    # Überlappende Treffer vollständig abdecken; kein Teil eines Secrets darf
+    # wegen eines früher beginnenden NER-Treffers im Klartext zurückbleiben.
     detected.sort(key=lambda item: (item.start, item.priority, -(item.end-item.start)))
     accepted: list[Finding] = []
-    occupied_until = -1
     for item in detected:
         if item.start < 0 or item.end > len(text) or item.start >= item.end:
             continue
-        if item.start < occupied_until:
-            continue
-        accepted.append(item)
-        occupied_until = item.end
+        if accepted and item.start < accepted[-1].end:
+            previous = accepted[-1]
+            winner = min((previous, item), key=lambda finding: finding.priority)
+            end = max(previous.end, item.end)
+            accepted[-1] = Finding(previous.start, end, winner.label,
+                                   text[previous.start:end], winner.priority)
+        else:
+            accepted.append(item)
 
     mapping: dict[tuple[str, str], str] = {}
     counts: Counter[str] = Counter()
