@@ -15,3 +15,13 @@ jobs:
           python-version: "3.12"
       - name: Run unittest (no model download)
         run: python -m unittest discover -s tests -v
+      - name: Validate PowerShell syntax (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem scripts/*.ps1 | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors) { throw "PowerShell syntax error in $($_.Name): $errors" }
+          }
