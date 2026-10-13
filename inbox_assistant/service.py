@@ -32,8 +32,26 @@ class InboxService:
     def save(self):
         atomic_json(self.state_path, self.state)
 
+    def _reconcile(self):
+        """Abgeschlossene Obsidian-Ergebnisse nur einmal übernehmen."""
+        bridge = bridge_status(self.bridge_dir)
+        if bridge["status"] == "finished" and self.state.get("last_reconciled") != bridge["batch_id"]:
+            for row in bridge["results"]:
+                source = row.get("source")
+                decision = self.state["decisions"].get(source)
+                if decision and row.get("status") == "moved":
+                    decision["status"] = "moved"
+            self.state["last_reconciled"] = bridge["batch_id"]
+            self.save()
+
+    def _require_idle(self):
+        self._reconcile()
+        if bridge_status(self.bridge_dir)["status"] == "awaiting-obsidian":
+            raise ValueError("Ein Verschiebungsstapel wartet auf Obsidian; zuerst abschließen.")
+
     def overview(self) -> dict:
         with self.lock:
+            self._reconcile()
             self.index.reload()
             current = {n.source: n for n in self.index.inbox_notes}
             rows = []
@@ -70,6 +88,7 @@ class InboxService:
 
     def reference_action(self, folder: str, source: str, action: str) -> dict:
         with self.lock:
+            self._require_idle()
             self.index.reload()
             items = self.index.references_for_ui(folder, self.state)
             if source not in {item["source"] for item in items}:
@@ -100,6 +119,7 @@ class InboxService:
 
     def analyze(self, provider: str, *, cloud_consent: bool = False, limit: int = 20) -> dict:
         with self.lock:
+            self._require_idle()
             if provider not in ("local", "jev"):
                 raise ValueError("Provider muss explizit local oder jev sein.")
             if provider == "jev" and not cloud_consent:
@@ -170,6 +190,7 @@ class InboxService:
 
     def decide(self, source: str, status: str, destination: str | None = None) -> dict:
         with self.lock:
+            self._require_idle()
             note = self._get_note(source)
             analysis = self.state["analyses"].get(note.source)
             if not analysis or analysis.get("sha256") != note.sha256:
@@ -188,6 +209,7 @@ class InboxService:
 
     def prepare(self) -> dict:
         with self.lock:
+            self._require_idle()
             # Der Browser fordert eine separate Aktion ausdrücklich an.
             return stage_moves(self.index, self.state, self.bridge_dir, self.backup_dir,
                                self.state["decisions"])
