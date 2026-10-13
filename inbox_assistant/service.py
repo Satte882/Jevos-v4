@@ -213,3 +213,11 @@ class InboxService:
             # Der Browser fordert eine separate Aktion ausdrücklich an.
             return stage_moves(self.index, self.state, self.bridge_dir, self.backup_dir,
                                self.state["decisions"])
+
+    def cancel_pending(self) -> dict:
+        """Nicht ausgeführten Plan verwerfen; das Backup bleibt erhalten."""
+        with self.lock:
+            if bridge_status(self.bridge_dir)["status"] != "awaiting-obsidian":
+                raise ValueError("Kein ausstehender Verschiebungsstapel.")
+            (self.bridge_dir / "pending.json").unlink()
+            return {"cancelled": True}
