@@ -21,7 +21,8 @@ async function regressionTests(){
   const element=id=>{
     if(!elements.has(id))elements.set(id,{
       value:"",checked:false,disabled:["copy","download"].includes(id),files:[],
-      textContent:"",className:"",handlers:{},
+      textContent:"",className:"",handlers:{},hidden:id==="tech-info",attributes:{},
+      setAttribute(key,value){this.attributes[key]=value;},
       addEventListener(event,handler){this.handlers[event]=handler;}
     });
     return elements.get(id);
@@ -34,6 +35,15 @@ async function regressionTests(){
   });
   new vm.Script(match[1]).runInContext(context);
   const run=(id,event)=>element(id).handlers[event]();
+  // Info-Button muss die Technikerklärung zuverlässig öffnen und wieder schließen.
+  assert.equal(element("tech-info").hidden,true);
+  run("tech-info-button","click");
+  assert.equal(element("tech-info").hidden,false);
+  assert.equal(element("tech-info-button").attributes["aria-expanded"],"true");
+  run("tech-info-button","click");
+  assert.equal(element("tech-info").hidden,true);
+  assert.equal(element("tech-info-button").attributes["aria-expanded"],"false");
+
   element("original").value="Alter Text";
   const request=run("sanitize","click");
   assert.equal(element("reviewed").disabled,true);
