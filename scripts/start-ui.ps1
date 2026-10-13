@@ -15,7 +15,12 @@ try {
         }
     }
     Write-Host "UI: http://127.0.0.1:8765  (mit Strg+C beenden)"
-    py -3 -m inbox_assistant.web
+    $venvPython = Join-Path $repo ".venv\Scripts\python.exe"
+    if (Test-Path -LiteralPath $venvPython) {
+        & $venvPython -m inbox_assistant.web
+    } else {
+        py -3 -m inbox_assistant.web
+    }
     if ($LASTEXITCODE -ne 0) { throw "Webanwendung wurde mit Fehler beendet." }
 } finally {
     if ($hasKey) { Remove-Item Env:\TYPESAFE_API_KEY -ErrorAction SilentlyContinue }
