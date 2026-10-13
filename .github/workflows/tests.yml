@@ -13,6 +13,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Validate Python modules
+        run: python -m compileall -q inbox_assistant jevos_local
+      - name: Validate Obsidian plugin JavaScript
+        run: node --check obsidian-plugin/main.js
       - name: Run unittest (no model download)
         run: python -m unittest discover -s tests -v
       - name: Validate PowerShell syntax (Windows)
