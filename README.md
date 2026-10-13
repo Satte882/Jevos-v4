@@ -45,6 +45,18 @@ Dann `http://127.0.0.1:8765` im Browser öffnen.
 
 Das Skript fragt **optional** verdeckt nach deinem TypeSafe-Key, falls Jev Cloud in dieser Sitzung benutzt werden soll. Ohne Key läuft nur der lokale Anbieter (nach separater Modellinstallation). **API-Schlüssel niemals ins Repo oder in den Chat schreiben.**
 
+### TypeSafe-Key dauerhaft lokal hinterlegen (.env)
+
+Lege im Repository-Hauptordner eine Datei mit dem **exakten** Namen `.env` an:
+
+```dotenv
+TYPESAFE_API_KEY=DEIN_PERSOENLICHER_API_KEY
+```
+
+Beim nächsten Start mit `scripts/start-ui.ps1` wird **nur** diese Variable eingelesen. Die Eingabeaufforderung entfällt; der Wert wird weder angezeigt noch nach dem Beenden als von diesem Skript gesetzte Umgebungsvariable behalten. Eine bereits gesetzte Umgebungsvariable `TYPESAFE_API_KEY` hat Vorrang. `.env` ist bereits in `.gitignore` ausgeschlossen und darf niemals eingecheckt oder geteilt werden. Der Schlüssel liegt darin **unverschlüsselt** und sollte nur unter deinem Windows-Benutzerkonto zugänglich sein.
+
+Die Checkbox und Freigabe für die tatsächliche Übertragung von Inbox-Daten an **Jev · TypeSafe Cloud** bleiben unverändert notwendig. Für die neue lokale Textbereinigung ist kein API-Key erforderlich.
+
 ### Jev Cloud testen – ohne lokale Modellinstallation
 
 Beim Start `J` auswählen und den privaten TypeSafe-Key verdeckt eingeben. Im Browser **Jev Cloud** wählen und bei der Analyse die Cloud-Übertragung explizit freigeben. Bei Bedarf zunächst nur fünf **synthetische** Notizen in einem Test-Vault verwenden. An TypeSafe gesendete Notizen und Referenztexte verlassen den Rechner; mögliche API-Kosten beachten.
