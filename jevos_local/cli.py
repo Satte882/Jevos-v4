@@ -50,7 +50,7 @@ def parser() -> argparse.ArgumentParser:
 
 def _report(rows: list[dict], filename: Path, excluded_root: Path | None) -> None:
     target = filename.expanduser().resolve()
-    if excluded_root and target.is_relative_to(excluded_root):
+    if excluded_root and target.is_relative_to(excluded_root.resolve()):
         raise ValueError("CSV-Bericht darf nicht im Obsidian-Vault liegen.")
     target.parent.mkdir(parents=True, exist_ok=True)
     columns = ["source"] + [f"{key}_p" for key in LABELS] + [f"{key}_yes" for key in LABELS]
