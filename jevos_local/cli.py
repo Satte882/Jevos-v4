@@ -1,4 +1,4 @@
-"""CLI für lokale synthetische Tests und Obsidian-Lesemodus."""
+"""CLI: immer genau einer von zwei Providern; Obsidian nur lesend."""
 from __future__ import annotations
 
 import argparse
@@ -7,7 +7,8 @@ import json
 import sys
 from pathlib import Path
 
-from .client import LABELS, JevosClient, JevosError
+from .client import JevosClient, TypeSafeClient, JevosError
+from .decisions import MODES, COLUMNS, questions_for, result_row, pretty_row
 from .vault import MAX_NOTES, iter_notes, vault_path
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples" / "demo_notes.json"
@@ -34,17 +35,21 @@ def positive_limit(value: str) -> int:
 
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Jevos-v4 lokal testen (nur CPU, Obsidian nur lesen)")
-    p.add_argument("--url", default="http://127.0.0.1:8017", help="Lokale Jevos-API")
+    p = argparse.ArgumentParser(description="Wähle entweder Jevos (lokal) ODER Jev (Cloud)")
+    p.add_argument("--provider", required=True, choices=("local", "jev"))
+    p.add_argument("--url", default="http://127.0.0.1:8017", help="Nur lokaler Jevos-Server")
     commands = p.add_subparsers(dest="command", required=True)
-    commands.add_parser("health", help="Lokalen Modellserver prüfen")
+    commands.add_parser("health")
     for name in ("demo", "vault"):
         cmd = commands.add_parser(name)
+        cmd.add_argument("--mode", choices=MODES, default="all")
         cmd.add_argument("--threshold", type=fraction, default=0.75)
-        cmd.add_argument("--report", type=Path, help="Lokale CSV (nur Pfade und Bewertungen)")
+        cmd.add_argument("--report", type=Path)
         if name == "vault":
-            cmd.add_argument("--vault", required=True, help="Pfad zum Obsidian-Vault")
+            cmd.add_argument("--vault", required=True)
             cmd.add_argument("--limit", type=positive_limit, default=20)
+            cmd.add_argument("--allow-cloud-vault", action="store_true",
+                             help="Bestätigung: Notiztexte werden an TypeSafe übertragen")
     return p
 
 
@@ -52,24 +57,23 @@ def _report(rows: list[dict], filename: Path, excluded_root: Path | None) -> Non
     target = filename.expanduser().resolve()
     if excluded_root and target.is_relative_to(excluded_root.resolve()):
         raise ValueError("CSV-Bericht darf nicht im Obsidian-Vault liegen.")
+    if not rows or not set(rows[0]) <= COLUMNS or any(set(row) != set(rows[0]) for row in rows):
+        raise ValueError("CSV-Felder nicht erlaubt oder unvollständig.")
     target.parent.mkdir(parents=True, exist_ok=True)
-    columns = ["source"] + [f"{key}_p" for key in LABELS] + [f"{key}_yes" for key in LABELS]
-    with target.open("w", newline="", encoding="utf-8-sig") as file:
-        writer = csv.DictWriter(file, fieldnames=columns)
+    with target.open("w", newline="", encoding="utf-8-sig") as output:
+        writer = csv.DictWriter(output, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
-    print(f"Bericht (nur Pfade/Scores): {target}")
+    print(f"Bericht (ohne Notizinhalte): {target}")
 
 
-def _run(client: JevosClient, items: list[tuple[str, str]], threshold: float) -> list[dict]:
+def _run(client, items: list[tuple[str, str]], threshold: float, mode: str, provider: str) -> list[dict]:
+    questions = questions_for(mode)
     rows = []
-    for name, text in items:
-        scores = client.classify(text)
-        parts = [f"{key}={scores[key]:.2f}{' JA' if scores[key] >= threshold else ''}" for key in LABELS]
-        print(f"{name}: {' | '.join(parts)}")
-        row = {"source": name}
-        row.update({f"{key}_p": round(scores[key], 4) for key in LABELS})
-        row.update({f"{key}_yes": scores[key] >= threshold for key in LABELS})
+    for name, note in items:
+        result = client.ask(note, questions)
+        row = result_row(name, provider, mode, result, threshold)
+        print(pretty_row(row))
         rows.append(row)
     return rows
 
@@ -77,7 +81,12 @@ def _run(client: JevosClient, items: list[tuple[str, str]], threshold: float) ->
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
-        client = JevosClient(base_url=args.url)
+        if args.provider == "jev" and args.url != "http://127.0.0.1:8017":
+            raise ValueError("--url ist nur für --provider local erlaubt.")
+        if args.command == "vault" and args.provider == "jev" and not args.allow_cloud_vault:
+            raise ValueError("Cloud-Vault gesperrt. Freigabe nur mit --allow-cloud-vault.")
+        client = JevosClient(base_url=args.url) if args.provider == "local" else TypeSafeClient()
+        print("Provider:", "Jevos-v4 LOKAL" if args.provider == "local" else "Jev TYPESAFE CLOUD")
         if args.command == "health":
             print(json.dumps(client.health(), indent=2, ensure_ascii=False))
             return 0
@@ -87,15 +96,14 @@ def main(argv: list[str] | None = None) -> int:
             items = [(item["id"], item["text"]) for item in examples]
         else:
             excluded_root = vault_path(args.vault)
-            # Berichtspfad vor dem ersten Modellaufruf prüfen.
             if args.report and args.report.expanduser().resolve().is_relative_to(excluded_root):
                 raise ValueError("CSV-Bericht darf nicht im Obsidian-Vault liegen.")
             items = list(iter_notes(excluded_root, limit=args.limit))
         if not items:
             print("Keine passenden Markdown-Notizen gefunden.")
             return 0
-        rows = _run(client, items, threshold=args.threshold)
-        print(f"Ausgewertet: {len(rows)} | Ja-Schwelle: {args.threshold:.0%}")
+        rows = _run(client, items, threshold=args.threshold, mode=args.mode, provider=args.provider)
+        print(f"Ausgewertet: {len(rows)} | Fragetypen: {args.mode} | Schwelle: {args.threshold:.0%}")
         if args.report:
             _report(rows, args.report, excluded_root)
         return 0
