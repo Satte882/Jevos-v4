@@ -28,6 +28,20 @@ Danach `scripts/start-ui.ps1` neu starten. Details, Grenzen und lokales Abnahmev
 
 In `config.example.json` vorkonfiguriert. Für den sicheren Test-Vault optional `config.json` anlegen; sie wird nicht in Git eingecheckt.
 
+## Mit einem Klick starten (ohne VS Code)
+
+**Windows-Desktop:** Die Verknüpfung wird einmalig erstellt durch:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\create-desktop-shortcut.ps1 -Force
+```
+
+Danach genügt ein Doppelklick auf **Jevos - KI-Assistent**. Der lokale Server wird im Hintergrund gestartet, falls er noch nicht läuft; die bestehende Weboberfläche öffnet sich automatisch im Browser.
+
+**Obsidian:** Das vorhandene Plugin **Jev Inbox Bridge** bietet nun zwei linke Symbole (Inbox und Textbereinigung). Die neue Plugin-Version muss in dem Vault installiert und aktiviert werden, in dem die Symbole erscheinen sollen. Die bestehende lokale `config.json` bleibt davon unberührt.
+
+**[Einrichtung und Fehlersuche](docs/STARTEN-OHNE-VSCODE.md)**
+
 ## Einmaliger Windows-Start
 
 **Voraussetzungen:** Git, Python 3.11+, Obsidian Desktop. Node ist nur für den Plugin-Syntaxcheck in CI nötig.
