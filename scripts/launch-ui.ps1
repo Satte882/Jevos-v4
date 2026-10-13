@@ -25,7 +25,7 @@ try {
         }
         $quotedScript = '"' + $script + '"'
         # Eigenständiger Hintergrundprozess lädt .env über start-ui.ps1.
-        $server = Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File $quotedScript" -WorkingDirectory $repo -WindowStyle Hidden -PassThru
+        $server = Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File $quotedScript -NonInteractive" -WorkingDirectory $repo -WindowStyle Hidden -PassThru
         $ready = $false
         for ($i = 0; $i -lt 50; $i++) {
             if (Test-JevosUI) {
@@ -47,7 +47,7 @@ try {
     Write-Warning $message
     try {
         Add-Type -AssemblyName System.Windows.Forms
-        [System.Windows.Forms.MessageBox]::Show($message, "Jevos – Startfehler", "OK", "Error") | Out-Null
+        [System.Windows.Forms.MessageBox]::Show($message, "Jevos - Startfehler", "OK", "Error") | Out-Null
     } catch { }
     exit 1
 }

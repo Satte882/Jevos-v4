@@ -1,4 +1,5 @@
 # Startet nur das lokale UI auf 127.0.0.1; optional TypeSafe-Key für diese Sitzung.
+param([switch]$NonInteractive)
 $ErrorActionPreference = "Stop"
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Push-Location $repo
@@ -31,7 +32,7 @@ try {
             }
         }
     }
-    if (-not $env:TYPESAFE_API_KEY) {
+    if (-not $env:TYPESAFE_API_KEY -and -not $NonInteractive) {
         $cloud = Read-Host "TypeSafe Jev Cloud in dieser Sitzung nutzbar machen? (J/N)"
         if ($cloud -eq "J") {
             $secret = Read-Host "TypeSafe API-Key (verdeckt; NICHT in Git speichern)" -AsSecureString
