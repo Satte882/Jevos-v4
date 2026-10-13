@@ -116,7 +116,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="Optional lokale config.json statt config.example.json")
     args = parser.parse_args(argv)
     try:
-        service = InboxService(args.config)
+        local_config = Path(__file__).resolve().parent.parent / "config.json"
+        config = args.config or (local_config if local_config.exists() else None)
+        service = InboxService(config)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"Start fehlgeschlagen: {exc}", file=sys.stderr)
         return 1
