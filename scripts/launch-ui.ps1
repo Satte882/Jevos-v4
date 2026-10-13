@@ -1,12 +1,19 @@
 # Ein-Klick-Launcher für die lokale Weboberfläche (Windows)
 param(
     [ValidateSet("inbox", "anonymize")]
-    [string]$View = "inbox"
+    [string]$View = "inbox",
+    [switch]$NoOpen,
+    [ValidatePattern('^[a-f0-9]{64}$')]
+    [string]$HandoffId
 )
 $ErrorActionPreference = "Stop"
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $homeUrl = "http://127.0.0.1:8765/"
 $targetUrl = if ($View -eq "anonymize") { "$($homeUrl)anonymize" } else { $homeUrl }
+if ($HandoffId) {
+    if ($View -ne "anonymize") { throw 'HandoffId requires the anonymize view.' }
+    $targetUrl = $targetUrl + '#handoff=' + $HandoffId
+}
 
 function Test-JevosUI {
     try {
@@ -41,7 +48,7 @@ try {
             throw "Lokale Oberfläche konnte nicht erreicht werden. Port 8765 prüfen."
         }
     }
-    Start-Process -FilePath $targetUrl
+    if (-not $NoOpen) { Start-Process -FilePath $targetUrl }
 } catch {
     $message = "Jevos konnte nicht geöffnet werden." + [Environment]::NewLine + [Environment]::NewLine + $_.Exception.Message
     Write-Warning $message

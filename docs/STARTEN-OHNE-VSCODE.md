@@ -19,14 +19,20 @@ Der alte Desktop-Button zu `start-ui.ps1` öffnete nur ein Terminal. Mit dem obi
 
 Das bestehende Plugin **Jev Inbox Bridge** besitzt nun zwei anklickbare Symbole in der linken Leiste:
 
-- **Bot** – Inbox-Assistent im Browser öffnen.
-- **Schild** – Textbereinigung im Browser öffnen.
+- **Bot** – aktuelle Inbox-Notiz in Obsidian einordnen.
+- **Schild** – Textauswahl oder aktuelle Notiz für KI vorbereiten.
 
-Beide lösen denselben lokalen Launcher aus. Es wird kein separates Obsidian-Fenster für die Weboberfläche benötigt.
+Beide Aktionen stehen außerdem in der Befehlspalette und im Editor-Kontextmenü. Ohne Markdown-Notiz erscheint eine Meldung. Der lokale Dienst startet bei Bedarf ohne zusätzliche Browserseite.
+
+**Einordnen:** Nur Markdown-Dateien direkt in der konfigurierten Inbox des konfigurierten Vaults sind erlaubt. Aktuelle Editoränderungen werden vorher über Obsidian gespeichert. Im Dialog „Vorschlag berechnen“ wählen und die Zielordner sowie verwendeten Originalpassagen prüfen. Bei Unsicherheit einen vorhandenen Zielordner selbst auswählen. „Bestätigen und sichern“ bestätigt ausschließlich diese Notiz und erstellt ein vollständiges Vault-Backup. Erst im zweiten Dialog „Jetzt verschieben“ wählen. Abbrechen entfernt den Einzelplan; das Backup bleibt erhalten. Änderungen nach der Analyse und vorhandene Zieldateien verhindern eine unzulässige Verschiebung.
+
+**Für KI vorbereiten:** Eine nicht leere Markierung hat Vorrang, andernfalls wird der gesamte aktuelle Editorinhalt übernommen; die Leseansicht übergibt die ganze Notiz. Die Bereinigungsansicht öffnet sich mit Herkunftsanzeige und automatischer Vorschau. Originalnotizen werden durch diese Aktion weder gespeichert noch ersetzt. Die Übergabe liegt ausschließlich im Arbeitsspeicher, ist einmalig und verfällt nach fünf Minuten. Die URL enthält nur eine zufällige ID. Maximal 100.000 Zeichen sind erlaubt. Die bereinigte Arbeitskopie kann korrigiert werden und muss vor Kopieren oder Export geprüft werden. Fehlende Dienste oder spaCy-Modelle werden als Fehler angezeigt; es gibt keine automatische Cloud-Umschaltung und keine Garantie vollständiger Anonymität.
+
+Die bisherigen allgemeinen Webansichten bleiben über „Jevos Inbox-Assistent öffnen“ und „Jevos Textbereinigung öffnen“ in der Befehlspalette erreichbar.
 
 **Wichtig:** Ein Obsidian-Plugin wird immer pro Vault installiert. Wenn deine `config.json` noch auf den Test-Vault zeigt, installiert der bisherige Standardbefehl das Plugin ausschließlich dort.
 
-### Plugin im derzeit konfigurierten Test-Vault aktualisieren
+### Plugin im konfigurierten Vault aktualisieren
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\install-obsidian-plugin.ps1 -Force
@@ -38,7 +44,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install-obsidian-plugin.ps1 -
 powershell -ExecutionPolicy Bypass -File .\scripts\install-obsidian-plugin.ps1 -VaultPath "C:\Users\user\Documents\104_0Admin_Projektordner\1010_Obsidian_0Admin-OS" -Force
 ```
 
-Dieser zweite Befehl kopiert ausschließlich die Plugin-Dateien nach `.obsidian\plugins\jev-inbox-bridge`. Er verändert keine Notizen und ändert **nicht** die `config.json`, die weiterhin auf den Test-Vault zeigen darf.
+Dieser zweite Befehl kopiert ausschließlich die Plugin-Dateien nach `.obsidian\plugins\jev-inbox-bridge`. Er verändert keine Notizen und ändert **nicht** die `config.json`. Für die Einordnung müssen geöffneter und konfigurierter Vault übereinstimmen; die Textbereinigung funktioniert unabhängig davon.
 
 Im richtigen Vault unter **Einstellungen → Community-Plugins** die Erweiterung **Jev Inbox Bridge** aktivieren oder nach dem Update einmal deaktivieren und wieder aktivieren. Danach erscheinen die zwei Symbole. Zusätzlich lassen sie sich über die Obsidian-Befehlspalette aufrufen.
 
@@ -48,7 +54,7 @@ Im richtigen Vault unter **Einstellungen → Community-Plugins** die Erweiterung
 - Deine vorhandene `.env` wird beim Serverstart von `start-ui.ps1` gelesen. Das Plugin liest den Schlüssel selbst nicht.
 - Der lokale jevos-v4-**Modellserver** ist unabhängig und muss bei Bedarf weiterhin separat gestartet werden; die **Textbereinigung** braucht ihn nicht.
 - Der gestartete Python-Webserver bleibt im Hintergrund, bis er beendet oder Windows neu gestartet wird.
-- Die neue Obsidian-Bedienfunktion verändert **keine** Notizen. Verschiebungen bleiben durch den bestehenden Zwei-Freigaben-Prozess geschützt.
+- Beim Einordnen werden Editoränderungen vor der Analyse gespeichert. Verschiebungen bleiben durch den bestehenden Zwei-Freigaben-Prozess geschützt. Die Textbereinigung verändert die Originalnotiz nicht.
 - Die Windows- und Obsidian-Einbindung ist erst nach Test auf dem eigenen PC vollständig abgenommen.
 
 ## Fehlerbehebung

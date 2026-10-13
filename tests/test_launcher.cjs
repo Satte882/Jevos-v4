@@ -25,11 +25,12 @@ Module._load = function(id, parent, main) {
 const Bridge = require("../obsidian-plugin/main.js");
 Module._load = previous;
 (async () => {
-  const plugin = new Bridge({});
+  const plugin = new Bridge({workspace: {on: () => ({}), getActiveViewOfType: () => null}});
   const ribbons = [];
   const commands = [];
   plugin.loadData = async () => ({repo: "C:\\mock\\Jevos-v4"});
   plugin.addSettingTab = () => {};
+  plugin.registerEvent = () => {};
   plugin.addRibbonIcon = (icon, label, callback) => {
     ribbons.push({icon, label, callback});
     return {};
@@ -44,8 +45,15 @@ Module._load = previous;
     "Bestehender sicherer Obsidian-Befehl muss erhalten bleiben");
   assert.ok(commands.some(x => x.id === "open-jevos-inbox"));
   assert.ok(commands.some(x => x.id === "open-jevos-anonymize"));
+  assert.ok(commands.some(x => x.id === "classify-active-note"));
+  assert.ok(commands.some(x => x.id === "prepare-active-text"));
   ribbons[0].callback();
   ribbons[1].callback();
+  assert.equal(routed.length,0,"Ohne aktive Markdown-Notiz keinen Auftrag erzeugen");
+  assert.equal(notices.length,2);
+  notices.length=0;
+  const openers=[commands.find(x=>x.id==="open-jevos-inbox"),commands.find(x=>x.id==="open-jevos-anonymize")];
+  openers[0].callback();openers[1].callback();
   assert.deepEqual(routed, ["inbox", "anonymize"]);
   // Exercise the real launcher method with Windows platform and synthetic processes.
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "jev-launcher-"));
@@ -57,7 +65,7 @@ Module._load = previous;
     plugin.settings.repo = temp;
     delete plugin.launchAssistant;
     for (const [index, view] of ["inbox", "anonymize"].entries()) {
-      ribbons[index].callback();
+      openers[index].callback();
       const {args, child} = spawned.at(-1);
       assert.equal(args[0], "powershell.exe");
       assert.deepEqual(args[1].slice(-2), ["-View", view]);
@@ -68,21 +76,24 @@ Module._load = previous;
       child.emit("close", 0);
     }
     assert.equal(notices.length, 0, "Successful launches need no error notice");
-    ribbons[0].callback();
+    openers[0].callback();
     spawned.at(-1).child.stderr.emit("data", Buffer.from("ParserError: missing quote"));
     spawned.at(-1).child.emit("close", 1);
+    await new Promise(resolve=>setImmediate(resolve));
     assert.match(notices.at(-1), /Exitcode 1.*ParserError/);
-    ribbons[1].callback();
+    openers[1].callback();
     spawned.at(-1).child.emit("close", 1);
+    await new Promise(resolve=>setImmediate(resolve));
     assert.match(notices.at(-1), /Python-Installation/);
-    ribbons[0].callback();
+    openers[0].callback();
     spawned.at(-1).child.emit("error", new Error("spawn ENOENT"));
+    await new Promise(resolve=>setImmediate(resolve));
     const count = notices.length;
     spawned.at(-1).child.emit("close", -2);
     assert.equal(notices.length, count, "Spawn failure must be reported only once");
     assert.match(notices.at(-1), /ENOENT/);
     plugin.settings.repo = path.join(temp, "missing");
-    ribbons[1].callback();
+    openers[1].callback();
     assert.match(notices.at(-1), /Launcher fehlt/);
   } finally {
     Object.defineProperty(process, "platform", platform);

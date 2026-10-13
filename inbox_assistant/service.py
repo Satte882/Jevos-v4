@@ -5,6 +5,7 @@ import hashlib
 import json
 import threading
 import time
+import uuid
 from pathlib import Path
 
 from jevos_local.client import JevosClient, TypeSafeClient, JevosError
@@ -150,30 +151,44 @@ class InboxService:
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
             raise ValueError("Bitte 1–50 Notizen auswählen.")
 
-    def start_analysis(self, provider, *, cloud_consent=False, limit=20, include_archives=False):
+    def _validate_source(self, source, expected_sha256=None):
+        if source is not None:
+            if not isinstance(source, str) or not source:
+                raise ValueError("Ungültige Einzelnotiz.")
+            note = self._get_note(source)
+            if expected_sha256 is not None and expected_sha256 != note.sha256:
+                raise ValueError("Notiz seit dem Aufruf geändert; bitte erneut starten.")
+
+    def start_analysis(self, provider, *, cloud_consent=False, limit=20, include_archives=False,
+                       source=None, expected_sha256=None):
         with self.lock:
             self._validate_analysis(provider, cloud_consent, limit)
             self._require_idle()
+            self._validate_source(source, expected_sha256)
             self.busy = True
-            self.job = {"status": "running", "completed": 0, "total": 0, "current": "Inbox wird gelesen"}
+            self.job = {"id": uuid.uuid4().hex, "status": "running", "completed": 0,
+                        "total": 0, "source": source, "current": "Inbox wird gelesen"}
+            job_id = self.job["id"]
         def worker():
             try:
                 self.analyze(provider, cloud_consent=cloud_consent, limit=limit,
-                             include_archives=include_archives, _reserved=True)
+                             include_archives=include_archives, source=source,
+                             expected_sha256=expected_sha256, _reserved=True)
             except Exception as exc:
                 with self.lock:
-                    self.job = {"status": "failed", "error": str(exc)}
+                    self.job.update(status="failed", error=str(exc))
                     self.busy = False
         self.analysis_thread = threading.Thread(target=worker, daemon=True)
         self.analysis_thread.start()
-        return {"started": True}
+        return {"started": True, "job_id": job_id}
 
     def analyze(self, provider: str, *, cloud_consent: bool = False, limit: int = 20,
-                include_archives: bool = False, _reserved: bool = False) -> dict:
+                include_archives: bool = False, source=None, expected_sha256=None, _reserved: bool = False) -> dict:
         with self.lock:
             self._validate_analysis(provider, cloud_consent, limit)
             if not _reserved:
                 self._require_idle()
+                self._validate_source(source, expected_sha256)
                 self.busy = True
                 self.job = {"status": "running", "completed": 0, "total": 0}
         results, errors = [], []
@@ -181,7 +196,8 @@ class InboxService:
             with self.lock:
                 self.index.reload()
                 self.last_scan = time.monotonic()
-                notes = list(self.index.inbox_notes[:limit])
+                self._validate_source(source, expected_sha256)
+                notes = [self._get_note(source)] if source is not None else list(self.index.inbox_notes[:limit])
                 self.state["include_archives"] = include_archives
                 self.state.setdefault("errors", {})
                 for note in notes:
@@ -277,16 +293,19 @@ class InboxService:
                         r["analysis"]["manual_review"] for r in results)}
         except Exception as exc:
             with self.lock:
-                self.job = {"status": "failed", "error": str(exc)}
+                self.job.update(status="failed", error=str(exc))
             raise
         finally:
             with self.lock:
                 self.busy = False
 
-    def decide(self, source: str, status: str, destination: str | None = None) -> dict:
+    def decide(self, source: str, status: str, destination: str | None = None,
+               expected_sha256=None) -> dict:
         with self.lock:
             self._require_idle()
             note = self._get_note(source)
+            if expected_sha256 is not None and expected_sha256 != note.sha256:
+                raise ValueError("Notiz seit der Prüfung geändert; bitte erneut analysieren.")
             analysis = self.state["analyses"].get(note.source)
             if not analysis or analysis.get("sha256") != note.sha256:
                 raise ValueError("Notiz muss mit aktuellem Stand analysiert werden.")
@@ -302,17 +321,25 @@ class InboxService:
             self.save()
             return decision
 
-    def prepare(self) -> dict:
+    def prepare(self, source=None, expected_sha256=None) -> dict:
         with self.lock:
             self._require_idle()
+            self._validate_source(source)
+            decisions = self.state["decisions"]
+            if source is not None:
+                if expected_sha256 is not None and self._get_note(source).sha256 != expected_sha256:
+                    raise ValueError("Notiz seit der Prüfung geändert; bitte erneut analysieren.")
+                decisions = {source: decisions[source]} if source in decisions else {}
             # Der Browser fordert eine separate Aktion ausdrücklich an.
             return stage_moves(self.index, self.state, self.bridge_dir, self.backup_dir,
-                               self.state["decisions"])
+                               decisions)
 
-    def cancel_pending(self) -> dict:
+    def cancel_pending(self, batch_id=None) -> dict:
         """Nicht ausgeführten Plan verwerfen; das Backup bleibt erhalten."""
         with self.lock:
             if bridge_status(self.bridge_dir)["status"] != "awaiting-obsidian":
                 raise ValueError("Kein ausstehender Verschiebungsstapel.")
+            if batch_id is not None and load(self.bridge_dir / "pending.json").get("batch_id") != batch_id:
+                raise ValueError("Ausstehender Stapel wurde inzwischen ersetzt.")
             (self.bridge_dir / "pending.json").unlink()
             return {"cancelled": True}

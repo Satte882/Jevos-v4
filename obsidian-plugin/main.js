@@ -1,12 +1,153 @@
 /* Obsidian Community-Plugin: Nur auf ausdrücklichen Befehl freigegebene Verschiebungen ausführen.
  * Verwendet ausschließlich lokale Dateien und Obsidian FileManager.renameFile().
  */
-const { Plugin, Modal, Setting, Notice, PluginSettingTab } = require("obsidian");
+const { Plugin, Modal, Setting, Notice, PluginSettingTab, MarkdownView, requestUrl } = require("obsidian");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
 const DEFAULT_REPO = "C:\\Users\\user\\Documents\\GitHub\\Jevos-v4";
+const LOCAL_URL = "http://127.0.0.1:8765";
+
+class ReviewNote extends Modal {
+  constructor(plugin, snapshot, connection) {
+    super(plugin.app);
+    this.plugin = plugin; this.snapshot = snapshot; this.connection = connection;
+    this.active = true; this.running = false; this.provider = "local"; this.consent = false;
+    this.includeArchives = false; this.destination = ""; this.analysis = null;
+  }
+  onOpen() {
+    this.titleEl.setText("Einordnen: " + this.snapshot.title);
+    this.contentEl.createEl("p", {text: "Prüfe den Zielordner und die Originalpassagen. Verschoben wird erst nach einer zweiten Freigabe."});
+    new Setting(this.contentEl).setName("Entscheidungsmodell").addDropdown(dropdown => {
+      this.providerControl = dropdown;
+      dropdown.addOptions({local: "jevos-v4 lokal", jev: "Jev · TypeSafe Cloud"}).setValue("local").onChange(value => {
+        this.provider = value; this.consent = false;
+        this.cloudToggle.setValue(false); this.cloudSetting.settingEl.style.display = value === "jev" ? "" : "none";
+      });
+    });
+    this.cloudSetting = new Setting(this.contentEl).setName("Cloud-Übertragung freigeben")
+      .setDesc("Diese Notiz und ausgewählte Referenzpassagen werden an TypeSafe übertragen; mögliche API-Kosten.")
+      .addToggle(toggle => {this.cloudToggle = toggle; toggle.setValue(false).onChange(value => {this.consent = value;});});
+    this.cloudSetting.settingEl.style.display = "none";
+    new Setting(this.contentEl).setName("Archiv- und Backlog-Ziele einbeziehen").addToggle(toggle => {
+      this.archiveControl = toggle; toggle.setValue(false).onChange(value => {this.includeArchives = value;});
+    });
+    new Setting(this.contentEl).addButton(button => {
+      this.startButton = button; button.setButtonText("Vorschlag berechnen").setCta().onClick(() => this.analyze());
+    });
+    this.statusEl = this.contentEl.createEl("p", {text: "Bereit für die lokale Analyse."});
+    this.resultsEl = this.contentEl.createDiv();
+  }
+  async analyze() {
+    if (this.running || !this.active) return;
+    if (this.provider === "jev" && !this.consent) {
+      this.statusEl.setText("Cloud erfordert deine ausdrückliche Freigabe für diesen Auftrag."); return;
+    }
+    this.running = true; this.analysis = null; this.resultsEl.empty();
+    for (const control of [this.startButton, this.providerControl, this.cloudToggle, this.archiveControl]) control.setDisabled(true);
+    try {
+      const started = await this.plugin.api(this.connection, "/api/analyze", {
+        provider: this.provider, cloud_consent: this.provider === "jev" && this.consent,
+        source: this.snapshot.source, expected_sha256: this.snapshot.sha256,
+        limit: 1, include_archives: this.includeArchives,
+      });
+      while (this.active) {
+        const state = await this.plugin.api(this.connection, "/api/state");
+        if (state.job.id !== started.job_id) throw new Error("Der Analyselauf wurde ersetzt. Bitte erneut starten.");
+        this.statusEl.setText("Analyse: " + (state.job.completed || 0) + " / " + (state.job.total || 1));
+        if (state.job.status !== "running") {
+          if (state.job.status === "failed") throw new Error(state.job.error);
+          const row = state.rows.find(item => item.source === this.snapshot.source);
+          if (!row || row.sha256 !== this.snapshot.sha256) throw new Error("Notiz seit dem Aufruf geändert. Bitte erneut aus Obsidian starten.");
+          if (row.error) throw new Error(row.error.error);
+          if (!row.analysis) throw new Error("Kein aktuelles Analyseergebnis vorhanden.");
+          this.analysis = row.analysis; this.showResult(state.folders); break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+    } catch (error) { if (this.active) this.statusEl.setText(error.message); }
+    finally {
+      this.running = false;
+      if (this.active) for (const control of [this.startButton, this.providerControl, this.cloudToggle, this.archiveControl]) control.setDisabled(false);
+      if (this.active && this.analysis) this.updateTarget();
+    }
+  }
+  showResult(folders) {
+    this.resultsEl.empty();
+    const a = this.analysis;
+    this.statusEl.setText(a.manual_review ? "Kein eindeutiges Ziel – bitte selbst auswählen." : "Vorgeschlagen: " + a.primary);
+    this.resultsEl.createEl("p", {text: "Modellwerte sind keine gemessene Trefferquote."});
+    this.destination = a.primary || "";
+    for (const alternative of a.alternatives.slice(0, 3)) {
+      new Setting(this.resultsEl).setName(alternative.folder)
+        .setDesc(Math.round(alternative.probability * 100) + " % Modellwert")
+        .addButton(button => button.setButtonText("Vergleichen").onClick(() => {
+          this.destination = alternative.folder; this.targetControl.setValue(this.destination); this.updateTarget();
+        }));
+    }
+    new Setting(this.resultsEl).setName("Zielordner").addDropdown(dropdown => {
+      this.targetControl = dropdown; dropdown.addOption("", "Zielordner wählen…");
+      for (const folder of folders) dropdown.addOption(folder, folder);
+      dropdown.setValue(this.destination).onChange(value => {this.destination = value; this.updateTarget();});
+    });
+    this.evidenceEl = this.resultsEl.createDiv();
+    new Setting(this.resultsEl).addButton(button => {
+      this.approveButton = button;
+      button.setButtonText("Bestätigen und sichern").setCta().onClick(() => this.prepare());
+    }).addButton(button => {
+      this.deferButton = button;
+      button.setButtonText("Zurückstellen").onClick(async () => {
+        if (this.running) return;
+        try {await this.plugin.api(this.connection, "/api/decide", {source: this.snapshot.source,
+          expected_sha256: this.snapshot.sha256, status: "deferred"}); this.close();}
+        catch (error) {this.statusEl.setText(error.message);}
+      });
+    });
+    this.updateTarget();
+  }
+  updateTarget() {
+    this.approveButton.setDisabled(!this.destination || this.running);
+    this.evidenceEl.empty();
+    const folder = this.destination || this.analysis.alternatives[0]?.folder;
+    this.evidenceEl.createEl("h4", {text: "Referenzen für " + (folder || "das gewählte Ziel")});
+    const references = this.analysis.evidence?.find(item => item.folder === folder)?.references || [];
+    if (!references.length) this.evidenceEl.createEl("p", {text: "Für diesen Ordner wurden keine Referenzpassagen übergeben."});
+    for (const reference of references) {
+      this.evidenceEl.createEl("strong", {text: reference.title});
+      this.evidenceEl.createEl("blockquote", {text: reference.snippet});
+    }
+  }
+  async prepare() {
+    if (this.running || !this.destination || !this.analysis) return;
+    this.running = true;
+    for (const control of [this.approveButton, this.deferButton, this.startButton, this.targetControl]) control.setDisabled(true);
+    let plan;
+    try {
+      const file = this.plugin.app.vault.getAbstractFileByPath(this.snapshot.source);
+      if (!file || sha(path.join(this.snapshot.root, this.snapshot.source)) !== this.snapshot.sha256)
+        throw new Error("Notiz seit der Analyse geändert. Bitte erneut aus Obsidian starten.");
+      this.statusEl.setText("Ziel wird bestätigt und der vollständige Vault gesichert…");
+      await this.plugin.api(this.connection, "/api/decide", {source: this.snapshot.source,
+        expected_sha256: this.snapshot.sha256, status: "approved", destination: this.destination});
+      plan = await this.plugin.api(this.connection, "/api/prepare", {confirm: "PREPARE",
+        source: this.snapshot.source, expected_sha256: this.snapshot.sha256});
+      const outcome = await this.plugin.apply(plan.batch_id);
+      if (outcome === "cancelled") {
+        await this.plugin.api(this.connection, "/api/cancel", {confirm: "CANCEL", batch_id: plan.batch_id});
+        new Notice("Verschiebung abgebrochen. Das Backup bleibt erhalten.");
+      }
+      this.close();
+    } catch (error) {
+      this.statusEl.setText(error.message + (plan ? " Der gesicherte Plan bleibt zur Prüfung erhalten." : ""));
+    } finally {
+      this.running = false;
+      if (this.active) {this.startButton.setDisabled(false); this.deferButton.setDisabled(false);
+        this.targetControl.setDisabled(false); this.updateTarget();}
+    }
+  }
+  onClose() {this.active = false; if (this.plugin.reviewModal === this) this.plugin.reviewModal = null;}
+}
 
 function normalized(s) {
   return path.resolve(s).replace(/[\\/]+$/, "").toLowerCase();
@@ -73,11 +214,24 @@ module.exports = class JevInboxBridge extends Plugin {
     // Ein Klick startet die lokale Oberfläche bei Bedarf und öffnet den Standardbrowser.
     // Vorhandene Prüf- und Verschiebungsbefehle bleiben unverändert.
     const launch = view => {
-      try { this.launchAssistant(view); }
+      try { Promise.resolve(this.launchAssistant(view)).catch(error => new Notice("Jevos: " + error.message, 10000)); }
       catch (error) { new Notice("Jevos: " + error.message, 10000); }
     };
-    this.addRibbonIcon("bot", "Jevos – Inbox-Assistent öffnen", () => launch("inbox"));
-    this.addRibbonIcon("shield-check", "Jevos – Textbereinigung öffnen", () => launch("anonymize"));
+    const action = (kind, view, editor) => {
+      try {
+        const snapshot = this.captureNote(view, editor);
+        Promise.resolve(kind === "classify" ? this.classifyNote(snapshot) : this.prepareText(snapshot))
+          .catch(error => new Notice("Jevos: " + error.message, 10000));
+      } catch (error) {new Notice("Jevos: " + error.message, 10000);}
+    };
+    this.addRibbonIcon("bot", "Jevos – Aktuelle Inbox-Notiz einordnen", () => action("classify"));
+    this.addRibbonIcon("shield-check", "Jevos – Für KI vorbereiten", () => action("redact"));
+    this.addCommand({id: "classify-active-note", name: "Aktuelle Inbox-Notiz einordnen", callback: () => action("classify")});
+    this.addCommand({id: "prepare-active-text", name: "Für KI vorbereiten – Auswahl oder Notiz", callback: () => action("redact")});
+    this.registerEvent(this.app.workspace.on("editor-menu", (menu, editor, view) => {
+      menu.addItem(item => item.setTitle("Jevos: Einordnen").setIcon("bot").onClick(() => action("classify", view, editor)));
+      menu.addItem(item => item.setTitle("Jevos: Für KI vorbereiten").setIcon("shield-check").onClick(() => action("redact", view, editor)));
+    }));
     this.addCommand({
       id: "open-jevos-inbox",
       name: "Jevos Inbox-Assistent öffnen",
@@ -97,7 +251,64 @@ module.exports = class JevInboxBridge extends Plugin {
       }
     });
   }
-  launchAssistant(view) {
+  captureNote(providedView, providedEditor) {
+    const view = providedView || this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!view?.file || view.file.extension !== "md") throw new Error("Bitte eine Markdown-Notiz in Obsidian öffnen.");
+    const isSource = view.getMode?.() === "source";
+    const editor = providedEditor || view.editor;
+    const text = isSource && editor ? editor.getValue() : view.getViewData();
+    const selection = isSource && editor ? editor.getSelection() : "";
+    return {view, file: view.file, source: view.file.path, title: view.file.basename,
+      root: this.getRoot(), text, selection};
+  }
+  async connection() {
+    await this.launchAssistant("inbox", {noOpen: true});
+    const response = await requestUrl({url: LOCAL_URL + "/api/plugin-context", throw: false});
+    if (response.status !== 200 || response.json.protocol !== 2) throw new Error("Lokalen Jevos-Dienst aktualisieren und neu starten.");
+    return response.json;
+  }
+  async api(connection, route, data) {
+    const response = await requestUrl({url: LOCAL_URL + route, method: data === undefined ? "GET" : "POST",
+      headers: {"X-Session-Token": connection.token, ...(data === undefined ? {} : {"Content-Type": "application/json"})},
+      ...(data === undefined ? {} : {body: JSON.stringify(data)}), throw: false});
+    if (response.status !== 200) throw new Error(response.json.error || "Lokaler Dienst nicht erreichbar. Bitte erneut starten.");
+    return response.json;
+  }
+  async classifyNote(snapshot) {
+    if (this.reviewModal || this.classificationOpening) throw new Error("Ein Einordnungsdialog ist bereits geöffnet.");
+    this.classificationOpening = true;
+    try {
+    // Check disk configuration before saving an editor outside the Inbox.
+    const repo = path.resolve(this.settings.repo);
+    const localConfig = path.join(repo, "config.json");
+    const config = JSON.parse(fs.readFileSync(fs.existsSync(localConfig) ? localConfig : path.join(repo, "config.example.json"), "utf8").replace(/^\uFEFF/, ""));
+    const inbox = path.relative(path.resolve(config.vault), path.resolve(config.inbox)).replace(/\\/g, "/");
+    if (normalized(config.vault) !== normalized(snapshot.root)) throw new Error("Der lokale Assistent ist für einen anderen Vault konfiguriert.");
+    if (!within(snapshot.root, snapshot.source) || !snapshot.source.startsWith(inbox + "/") || snapshot.source.slice(inbox.length + 1).includes("/"))
+      throw new Error("Einordnen gilt nur für Markdown-Notizen direkt in der konfigurierten Inbox.");
+    // Save through the captured Obsidian view immediately, before any startup wait.
+    if (snapshot.view.file !== snapshot.file) throw new Error("Ursprüngliche Notiz nicht mehr geöffnet.");
+    await snapshot.view.save(false);
+    const bytes = fs.readFileSync(path.join(snapshot.root, snapshot.source));
+    if (bytes.toString("utf8").replace(/^\uFEFF/, "") !== snapshot.text) throw new Error("Notiz inzwischen geändert. Bitte erneut starten.");
+    snapshot.sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
+    const connection = await this.connection();
+    if (normalized(connection.vault) !== normalized(snapshot.root)) throw new Error("Der lokale Assistent ist für einen anderen Vault konfiguriert.");
+    if (!snapshot.source.startsWith(connection.inbox + "/") || snapshot.source.slice(connection.inbox.length + 1).includes("/"))
+      throw new Error("Einordnen gilt nur für Markdown-Notizen direkt in der konfigurierten Inbox.");
+    this.reviewModal = new ReviewNote(this, snapshot, connection); this.reviewModal.open();
+    } finally {this.classificationOpening = false;}
+  }
+  async prepareText(snapshot) {
+    const text = snapshot.selection.trim() ? snapshot.selection : snapshot.text;
+    if (!text.trim()) throw new Error("Die Textauswahl beziehungsweise Notiz ist leer.");
+    if (text.length > 100000) throw new Error("Maximal 100.000 Zeichen sind erlaubt.");
+    const connection = await this.connection();
+    const handoff = await this.api(connection, "/api/handoffs/redaction", {
+      text, title: snapshot.title, kind: snapshot.selection.trim() ? "selection" : "note"});
+    await this.launchAssistant("anonymize", {handoffId: handoff.handoff_id});
+  }
+  launchAssistant(view, options = {}) {
     if (process.platform !== "win32")
       throw new Error("Der Ein-Klick-Launcher unterstützt derzeit Windows.");
     if (!["inbox", "anonymize"].includes(view))
@@ -106,8 +317,14 @@ module.exports = class JevInboxBridge extends Plugin {
     const launcher = path.join(repo, "scripts", "launch-ui.ps1");
     if (!fs.existsSync(launcher) || !fs.statSync(launcher).isFile())
       throw new Error("Launcher fehlt. GitHub-Repository aktualisieren und Plugin-Einstellungen prüfen.");
-    const child = spawn("powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", launcher, "-View", view],
+    const args = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", launcher, "-View", view];
+    if (options.noOpen) args.push("-NoOpen");
+    if (options.handoffId) {
+      if (view !== "anonymize" || !/^[a-f0-9]{64}$/.test(options.handoffId)) throw new Error("Ungültige Übergabe-ID.");
+      args.push("-HandoffId", options.handoffId);
+    }
+    return new Promise((resolve, reject) => {
+    const child = spawn("powershell.exe", args,
       { cwd: repo, windowsHide: true, stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
     let spawnFailed = false;
@@ -117,13 +334,15 @@ module.exports = class JevInboxBridge extends Plugin {
     });
     child.on("error", error => {
       spawnFailed = true;
-      new Notice("Jevos konnte nicht gestartet werden: " + error.message, 10000);
+      reject(new Error("Jevos konnte nicht gestartet werden: " + error.message));
     });
     child.on("close", code => {
       if (code !== 0 && !spawnFailed) {
-        new Notice("Jevos konnte nicht gestartet werden (Exitcode " + code + "). " +
-          (stderr.trim() || "Launcher und Python-Installation prüfen."), 15000);
+        reject(new Error("Jevos konnte nicht gestartet werden (Exitcode " + code + "). " +
+          (stderr.trim() || "Launcher und Python-Installation prüfen.")));
       }
+      if (code === 0) resolve();
+    });
     });
   }
   getRoot() {
@@ -170,7 +389,7 @@ module.exports = class JevInboxBridge extends Plugin {
         throw new Error("Obsidian kennt die Quelldatei nicht: " + move.source);
     }
   }
-  async apply() {
+  async apply(expectedBatchId) {
     const repo = path.resolve(this.settings.repo);
     const root = this.getRoot();
     if (normalized(repo) === normalized(root) || normalized(repo).startsWith(normalized(root) + path.sep))
@@ -180,13 +399,14 @@ module.exports = class JevInboxBridge extends Plugin {
     const resultFile = path.join(base, "result.json");
     if (!fs.existsSync(pendingFile)) throw new Error("Kein freigegebener Stapel vorhanden.");
     const plan = JSON.parse(fs.readFileSync(pendingFile, "utf8"));
+    if (expectedBatchId && plan.batch_id !== expectedBatchId) throw new Error("Ausführungsplan wurde inzwischen ersetzt.");
     if (fs.existsSync(resultFile)) {
       const old = JSON.parse(fs.readFileSync(resultFile, "utf8"));
       if (old.batch_id === plan.batch_id) throw new Error("Dieser Stapel wurde bereits ausgeführt.");
     }
     this.preflight(plan, repo, root);
     const accepted = await new Promise(resolve => new ConfirmMoves(this.app, plan, resolve).open());
-    if (!accepted) return;
+    if (!accepted) return "cancelled";
     const result = {batch_id: plan.batch_id, finished_at: null, results: []};
     for (const move of plan.moves) {
       try {
@@ -207,6 +427,7 @@ module.exports = class JevInboxBridge extends Plugin {
     }
     const ok = result.results.filter(x => x.status === "moved").length;
     new Notice("Inbox Bridge: " + ok + " Datei(en) verschoben; Ergebnis im lokalen Assistenten.", 9000);
+    return "finished";
   }
   preflightOne(move, plan, root) {
     if (!within(root, move.source) || !within(root, move.target) ||

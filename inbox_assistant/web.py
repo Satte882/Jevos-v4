@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from .service import InboxService
+from .handoffs import RedactionHandoffs
 from redaction_app.core import redact
 from redaction_app.docx import extract_docx
 
@@ -22,7 +23,11 @@ FAVICON = Path(__file__).with_name("assets") / "favicon.svg"
 
 
 def handler_factory(service: InboxService, token: str):
+    handoffs = RedactionHandoffs()
     class Handler(BaseHTTPRequestHandler):
+        def _local_origin(self):
+            return (self.headers.get("Origin") in (None, "http://127.0.0.1:8765", "http://localhost:8765")
+                    and self.headers.get("Sec-Fetch-Site") not in ("cross-site", "same-site"))
         def _valid_host(self) -> bool:
             return self.headers.get("Host", "") in ("127.0.0.1:8765", "localhost:8765")
 
@@ -47,6 +52,11 @@ def handler_factory(service: InboxService, token: str):
             if not self._valid_host():
                 return self._send(403, {"error": "Ungültiger Host."})
             parsed = urlsplit(self.path)
+            if parsed.path == "/api/plugin-context":
+                if not self._local_origin():
+                    return self._send(403, {"error": "Fremder Origin blockiert."})
+                return self._send(200, {"protocol": 2, "token": token,
+                                        "vault": str(service.index.root), "inbox": service.index.inbox_rel})
             if parsed.path == "/assets/ui.css":
                 return self._send(200, {}, body=UI_CSS.read_bytes(), mime="text/css; charset=utf-8")
             if parsed.path == "/favicon.svg":
@@ -74,19 +84,23 @@ def handler_factory(service: InboxService, token: str):
         def do_POST(self):
             if not self._valid_host() or not self._token_ok():
                 return self._send(403, {"error": "Nicht autorisiert."})
-            if self.headers.get("Origin") not in (None, "http://127.0.0.1:8765", "http://localhost:8765"):
+            if not self._local_origin():
                 return self._send(403, {"error": "Fremder Origin blockiert."})
             if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
                 return self._send(415, {"error": "Nur JSON erlaubt."})
             try:
                 length = int(self.headers.get("Content-Length", "0"))
-                allowed_size = 3_000_000 if self.path in ("/api/redact", "/api/docx-text") else 16000
+                allowed_size = 3_000_000 if self.path in ("/api/redact", "/api/docx-text", "/api/handoffs/redaction") else 16000
                 if not 0 < length <= allowed_size:
                     raise ValueError("Ungültige Anfragelänge.")
                 payload = json.loads(self.rfile.read(length))
                 if not isinstance(payload, dict):
                     raise ValueError("JSON-Objekt erforderlich.")
-                if self.path == "/api/redact":
+                if self.path == "/api/handoffs/redaction":
+                    result = handoffs.create(payload.get("text"), payload.get("title"), payload.get("kind"))
+                elif self.path == "/api/handoffs/redaction/consume":
+                    result = handoffs.consume(payload.get("handoff_id"))
+                elif self.path == "/api/redact":
                     result = redact(payload.get("text"))
                 elif self.path == "/api/docx-text":
                     if not isinstance(payload.get("filename"), str) or not payload["filename"].lower().endswith(".docx"):
@@ -105,11 +119,13 @@ def handler_factory(service: InboxService, token: str):
                         cloud_consent=payload.get("cloud_consent") is True,
                         limit=payload.get("limit", 20),
                         include_archives=payload.get("include_archives") is True,
+                        source=payload.get("source"),
+                        expected_sha256=payload.get("expected_sha256"),
                     )
                 elif self.path == "/api/decide":
                     result = service.decide(payload.get("source", ""),
                                             payload.get("status", ""),
-                                            payload.get("destination"))
+                                            payload.get("destination"), payload.get("expected_sha256"))
                 elif self.path == "/api/reference":
                     result = service.reference_action(payload.get("folder", ""),
                                                        payload.get("source", ""),
@@ -117,11 +133,11 @@ def handler_factory(service: InboxService, token: str):
                 elif self.path == "/api/cancel":
                     if payload.get("confirm") != "CANCEL":
                         raise ValueError("Ausdrückliche Abbruchbestätigung fehlt.")
-                    result = service.cancel_pending()
+                    result = service.cancel_pending(payload.get("batch_id"))
                 elif self.path == "/api/prepare":
                     if payload.get("confirm") != "PREPARE":
                         raise ValueError("Separate Freigabe für Sicherung/Stapel fehlt.")
-                    plan = service.prepare()
+                    plan = service.prepare(payload.get("source"), payload.get("expected_sha256"))
                     result = {"batch_id": plan["batch_id"], "backup": plan["backup"],
                               "moves": [{"source": m["source"], "target": m["target"]}
                                         for m in plan["moves"]]}

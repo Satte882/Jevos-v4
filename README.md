@@ -2,14 +2,23 @@
 
 **Privates Windows-11-Projekt mit zwei Funktionen:**
 
-1. **Obsidian Inbox-Assistent:** Jev Cloud oder das lokale Modell `jevos-v4` schlägt für noch nicht eingeordnete Markdown-Notizen einen **bestehenden Zielordner** vor. Ein lokaler Index wählt dafür relevante Referenznotizen aus; **das Modell wird nicht trainiert**. Unsichere Zuordnungen bleiben offen. Verschiebungen erfolgen ausschließlich nach einer Freigabe im Browser **und** einer weiteren Freigabe im Obsidian-Plugin.
+1. **Obsidian Inbox-Assistent:** Jev Cloud oder das lokale Modell `jevos-v4` schlägt für noch nicht eingeordnete Markdown-Notizen einen **bestehenden Zielordner** vor. Ein lokaler Index wählt dafür relevante Referenznotizen aus; **das Modell wird nicht trainiert**. Unsichere Zuordnungen bleiben offen. Verschiebungen erfolgen ausschließlich nach Zielbestätigung und Backup **sowie** einer weiteren Freigabe im Obsidian-Plugin. Die Zielprüfung ist für Einzelnotizen direkt in Obsidian oder für Stapel im Browser möglich.
 2. **Text für externe KI bereinigen:** spaCy (`de_core_news_md`), Regex und Python erkennen und ersetzen lokal ausgewählte personenbezogene bzw. sensible Angaben. **Hier kommt kein Jev zum Einsatz.** Die bereinigte Fassung muss vor dem Kopieren oder Speichern geprüft und ausdrücklich freigegeben werden.
 
 **Status (Oktober 2026):** Windows-Start, lokaler Modellbetrieb, Jev-Cloud-Anbindung, Obsidian-Plugin und Notizverschiebungen einschließlich Backup und Link-Aktualisierung wurden lokal mit synthetischen Testdaten abgenommen. Wiederholungstests für drei Notizen/Dateien wurden erfolgreich berichtet; Originaldateien blieben unverändert. GitHub Actions prüfen Python-, JavaScript-, Plugin- und PowerShell-Regressionsfälle unter Windows und Ubuntu. **Die fachliche Qualität jeder neuen Ordnerempfehlung ist damit nicht garantiert** – gerade mehrdeutige Ziele erfordern weiterhin deine Entscheidung.
 
+**Direkte Integration 0.2.0, lokal geprüft am 13.10.2026:** 61 Python-Tests sowie JavaScript- und Windows-Startprüfungen bestanden. In echtem Obsidian wurde im Test-Vault der Einzelnotiz-Ablauf einschließlich beider Freigaben, Backup-Prüfung, Abbruch ohne verbleibenden Plan und Link-Aktualisierung geprüft. Gesamtnotiz und Textauswahl öffneten automatisch die lokale Bereinigung; erneute Bearbeitung sperrte das Kopieren wieder. Anschließend wurden eine echte Inbox-Notiz ohne Verschiebung analysiert und ihre 26.959 Zeichen lokal bereinigt. Plugin und Dienst wurden im Original-Vault aktualisiert; alle 1.348 ursprünglichen Markdown-Dateien sowie die Konfiguration blieben unverändert. Diese Abnahme bestätigt die Integration, nicht die Qualität aller Erkennungen: Das deutsche spaCy-Modell erzeugte im englischen Artikel Fehlmarkierungen und übersah Namen.
+
 ## Tägliche Nutzung – ohne VS Code
 
-Den **Jevos – KI-Assistent**-Button auf dem Windows-Desktop oder das **Bot-Symbol** im Obsidian-Plugin **Jev Inbox Bridge** anklicken. Falls nötig, startet der lokale Webserver im Hintergrund; anschließend öffnet sich die Oberfläche im Standardbrowser:
+Obsidian bleibt der Arbeitsplatz. Das Plugin **Jev Inbox Bridge 0.2.0** bietet in der linken Leiste, der Befehlspalette und im Editor-Kontextmenü zwei Aktionen:
+
+- **Bot – Einordnen:** Die aktuelle Markdown-Notiz direkt in der konfigurierten Inbox speichern, lokal analysieren und Zielordner samt verwendeten Referenzpassagen in Obsidian prüfen. Bei Unsicherheit bleibt das Ziel leer. „Bestätigen und sichern“ erstellt das vollständige Vault-Backup für ausschließlich diese Notiz; erst „Jetzt verschieben“ im zweiten Dialog verschiebt sie. Abbrechen verwirft den Einzelplan und behält das Backup.
+- **Schild – Für KI vorbereiten:** Markierten Text oder andernfalls den gesamten aktuellen Notizinhalt an die lokale Textbereinigung übergeben. In der Leseansicht wird die ganze Notiz verwendet. Die Originalnotiz wird durch diese Aktion weder gespeichert noch verändert. Die bestehende Bereinigungsansicht zeigt die Herkunft und berechnet automatisch eine Vorschau; vor Kopieren oder Export ist deine Prüfung erforderlich.
+
+Der Dienst startet bei Bedarf im Hintergrund. Vault und konfigurierte Inbox müssen für die Einordnung übereinstimmen; das Plugin ändert die Konfiguration nicht. Die Modellauswahl startet lokal, Cloud erfordert die ausdrückliche Freigabe für diesen Auftrag. Es gibt keine automatische Umschaltung oder Übertragung an ein externes LLM.
+
+Die bisherigen Befehle **„Jevos Inbox-Assistent öffnen“** und **„Jevos Textbereinigung öffnen“** sowie der Desktop-Button öffnen weiterhin die allgemeinen Browseransichten:
 
 - **Inbox:** http://127.0.0.1:8765/
 - **Textbereinigung:** http://127.0.0.1:8765/anonymize (auch über das Schild-Symbol in Obsidian)
@@ -22,7 +31,7 @@ Einmalig einen Desktop-Button erzeugen oder aktualisieren (PowerShell im Reposit
 powershell -ExecutionPolicy Bypass -File .\scripts\create-desktop-shortcut.ps1 -Force
 ```
 
-Die Obsidian-Erweiterung muss im **tatsächlich geöffneten Vault** installiert und unter **Einstellungen → Community-Plugins** aktiviert sein. Die Symbole öffnen die Browseroberflächen; das Plugin übernimmt weiterhin die gesondert freigegebenen Datei-Verschiebungen. **[Details zu Start, Plugin-Installation und Fehlerbehebung](docs/STARTEN-OHNE-VSCODE.md).**
+Die Obsidian-Erweiterung muss im **tatsächlich geöffneten Vault** installiert und unter **Einstellungen → Community-Plugins** aktiviert sein. Textübergaben liegen nur im Arbeitsspeicher, werden einmalig übernommen und verfallen nach fünf Minuten. Im URL-Fragment steht ausschließlich eine zufällige ID, die die Bereinigungsseite sofort entfernt. Das Textlimit beträgt 100.000 Zeichen. **[Details zu Start, Plugin-Installation und Fehlerbehebung](docs/STARTEN-OHNE-VSCODE.md).**
 
 ## Installations- und Projektpfade
 

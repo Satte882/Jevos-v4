@@ -25,6 +25,8 @@ jobs:
         run: node tests/test_compact_ui.cjs
       - name: Test Obsidian one-click launcher
         run: node tests/test_launcher.cjs
+      - name: Test direct Obsidian note actions
+        run: node tests/test_note_actions.cjs
       - name: Run synthetic Obsidian bridge preflight
         run: node tests/test_plugin.cjs
       - name: Run unittest (no model download)

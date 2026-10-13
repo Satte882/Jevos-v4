@@ -11,6 +11,7 @@
 <div class="header-title"><h1>Text für externe KI bereinigen</h1><p class="muted">Lokal verarbeiten · Prüfen · Kopieren</p></div>
 <a class="view-switch" href="/" aria-label="Zum Obsidian Inbox-Assistenten zurück">← Inbox-Assistent</a>
 </header>
+<p id="handoff-source" class="muted" hidden></p>
 <section>
 <h2>1 · Text eingeben und bereinigen</h2>
 <div class="tech-summary">
@@ -97,7 +98,7 @@ original.addEventListener("input",()=>{invalidate();cleaned.value="";$("counts")
 cleaned.addEventListener("input",invalidate);
 review.addEventListener("change",allow);
 $("clear").addEventListener("click",()=>{
- file.value="";$("file-name").textContent="TXT, MD oder DOCX · keine Datei ausgewählt";original.value="";cleaned.value="";$("counts").textContent="";$("summary").textContent="";invalidate();status("Zurückgesetzt.");
+ file.value="";$("file-name").textContent="TXT, MD oder DOCX · keine Datei ausgewählt";original.value="";cleaned.value="";$("counts").textContent="";$("summary").textContent="";$("handoff-source").hidden=true;invalidate();status("Zurückgesetzt.");
 });
 file.addEventListener("change",async()=>{
  invalidate();const requestRevision=revision;
@@ -106,6 +107,7 @@ file.addEventListener("change",async()=>{
  try{
    const f=file.files?.[0];if(!f)return;
    $("file-name").textContent=f.name;
+   $("handoff-source").hidden=true;
    const ext=f.name.split(".").pop().toLowerCase();
    if(!["txt","md","docx"].includes(ext))throw new Error("Nur TXT, MD und DOCX werden unterstützt.");
    if(f.size>2_000_000)throw new Error("Datei größer als 2 MB.");
@@ -130,7 +132,7 @@ file.addEventListener("change",async()=>{
  }catch(err){if(requestRevision===revision){original.value="";status(err.message,true);}}
  finally{busy(-1);}
 });
-$("sanitize").addEventListener("click",async()=>{
+async function sanitizeText(){
  invalidate();cleaned.value="";
  $("counts").textContent="";$("summary").textContent="";
  const requestRevision=revision;busy(1);
@@ -144,7 +146,27 @@ $("sanitize").addEventListener("click",async()=>{
    status("Lokal verarbeitet. Bitte den gesamten Ausgabetext kontrollieren.");
  }catch(err){if(requestRevision===revision)status(err.message,true);}
  finally{busy(-1);}
-});
+}
+$("sanitize").addEventListener("click",sanitizeText);
+async function receiveHandoff(){
+ const params=new URLSearchParams(window.location.hash.slice(1));
+ const id=params.get("handoff");
+ if(!id)return;
+ window.history.replaceState(null,"",window.location.pathname+window.location.search);
+ invalidate();const requestRevision=revision;busy(1);
+ let received=false;
+ try{
+   const data=await api("/api/handoffs/redaction/consume",{handoff_id:id});
+   if(requestRevision!==revision)return;
+   original.value=data.text;cleaned.value="";
+   $("handoff-source").textContent="Aus Obsidian: "+data.title+" · "+(data.kind==="selection"?"Textauswahl":"Ganze Notiz");
+   $("handoff-source").hidden=false;
+   received=true;
+ }catch(err){if(requestRevision===revision)status(err.message,true);}
+ finally{busy(-1);}
+ if(received)await sanitizeText();
+}
+if(typeof window!=="undefined") receiveHandoff();
 copy.addEventListener("click",async()=>{
  if(copy.disabled)return;
  try{await navigator.clipboard.writeText(cleaned.value);status("Bereinigter Text in die Zwischenablage kopiert.");}

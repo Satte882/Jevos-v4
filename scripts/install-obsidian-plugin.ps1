@@ -21,5 +21,5 @@ Copy-Item -LiteralPath (Join-Path $root "obsidian-plugin\main.js") -Destination 
 Write-Host "Plugin kopiert: $target"
 Write-Host "In Obsidian unter Community-Plugins 'Jev Inbox Bridge' aktivieren."
 Write-Host "In Obsidian Community-Plugin deaktivieren/aktivieren, damit die neuen linken Symbole erscheinen."
-Write-Host "Links: Bot = Inbox-Assistent; Schild = Textbereinigung."
-Write-Host "Verschiebungen weiterhin nur ueber Strg+P nach separater Freigabe."
+Write-Host "Links: Bot = aktuelle Inbox-Notiz einordnen; Schild = Auswahl oder Notiz fuer KI vorbereiten."
+Write-Host "Einordnen: Ziel pruefen, Backup bestaetigen und im zweiten Dialog verschieben."

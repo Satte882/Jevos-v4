@@ -75,3 +75,29 @@ async function regressionTests(){
   console.log("Redaction UI: 3 behavioral regression scenarios OK");
 }
 regressionTests().catch(error=>{console.error(error);process.exitCode=1;});
+
+async function handoffTests(){
+  async function scenario(failure){
+    const elements=new Map();
+    const get=id=>{if(!elements.has(id))elements.set(id,{value:"",checked:false,disabled:["copy","download"].includes(id),hidden:true,handlers:{},setAttribute(){},addEventListener(event,fn){this.handlers[event]=fn;}});return elements.get(id);};
+    const calls=[];let removed=false;
+    const context=vm.createContext({document:{getElementById:get},URLSearchParams,
+      window:{location:{hash:"#handoff="+"a".repeat(64),pathname:"/anonymize",search:""},history:{replaceState(){removed=true;}}},
+      fetch:async(route,options)=>{calls.push(route);
+        if(route.includes("consume"))return {ok:failure!=="expired",json:async()=>failure==="expired"?{error:"Übergabe abgelaufen"}:{text:"Alice confidential",title:"Synthetic.md",kind:"selection"}};
+        return {ok:failure!=="model",json:async()=>failure==="model"?{error:"Sprachmodell fehlt"}:{text:"[PERSON_1] confidential",replacements:1,categories:{PERSON:1}}};
+      },navigator:{clipboard:{writeText:async()=>{}}},console});
+    new vm.Script(match[1]).runInContext(context);
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(removed,true,"Übergabe-ID aus Adresszeile entfernen");
+    assert.equal(get("copy").disabled,true);
+    if(failure==="expired"){assert.equal(get("original").value,"");assert.equal(calls.length,1);assert.match(get("status").textContent,/abgelaufen/);}
+    else {assert.equal(get("original").value,"Alice confidential");assert.match(get("handoff-source").textContent,/Synthetic.md.*Textauswahl/);assert.equal(calls.length,2);
+      if(failure==="model"){assert.equal(get("cleaned").value,"");assert.match(get("status").textContent,/Sprachmodell/);}
+      else {assert.equal(get("cleaned").value,"[PERSON_1] confidential");get("reviewed").checked=true;get("reviewed").handlers.change();assert.equal(get("copy").disabled,false);get("cleaned").handlers.input();assert.equal(get("copy").disabled,true);}
+    }
+  }
+  await scenario();await scenario("expired");await scenario("model");
+  console.log("Redaction handoff: automatic preview, expiry, missing model and manual review OK");
+}
+handoffTests().catch(error=>{console.error(error);process.exitCode=1;});

@@ -44,7 +44,16 @@ try {
             if (($global:jevTestLaunches -join "|") -ne ($expected -join "|")) { throw "Unexpected launcher routing" }
         }
     }
-    Write-Output "Windows launcher: keyless startup and four routing/reuse cases OK"
+    $global:jevTestCold = $false
+    $global:jevTestLaunches = @()
+    & (Join-Path $repo "scripts\launch-ui.ps1") -NoOpen
+    if ($global:jevTestLaunches.Count -ne 0) { throw "NoOpen must not open a browser" }
+    $handoffId = 'a' * 64
+    & (Join-Path $repo "scripts\launch-ui.ps1") -View anonymize -HandoffId $handoffId
+    if ($global:jevTestLaunches[-1] -ne ("http://127.0.0.1:8765/anonymize#handoff=" + $handoffId)) {
+        throw "Handoff URL must contain only the opaque id"
+    }
+    Write-Output "Windows launcher: keyless startup, routing, NoOpen and opaque handoff URL OK"
 } finally {
     # Only the unique temporary directory created above is removed.
     Remove-Item -LiteralPath $temporary -Recurse -Force -ErrorAction SilentlyContinue
