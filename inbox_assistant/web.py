@@ -83,7 +83,7 @@ def handler_factory(service: InboxService, token: str):
                 if self.path == "/api/redact":
                     result = redact(payload.get("text"))
                 elif self.path == "/api/docx-text":
-                    if payload.get("filename", "").lower().endswith(".docx") is not True:
+                    if not isinstance(payload.get("filename"), str) or not payload["filename"].lower().endswith(".docx"):
                         raise ValueError("Nur .docx-Dateien zugelassen.")
                     raw = payload.get("data")
                     if not isinstance(raw, str):
