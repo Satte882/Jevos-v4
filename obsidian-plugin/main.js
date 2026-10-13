@@ -5,6 +5,7 @@ const { Plugin, Modal, Setting, Notice, PluginSettingTab } = require("obsidian")
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { spawn } = require("child_process");
 const DEFAULT_REPO = "C:\\Users\\user\\Documents\\GitHub\\Jevos-v4";
 
 function normalized(s) {
@@ -69,6 +70,24 @@ module.exports = class JevInboxBridge extends Plugin {
   async onload() {
     this.settings = Object.assign({repo: DEFAULT_REPO}, await this.loadData() || {});
     this.addSettingTab(new BridgeSettings(this.app, this));
+    // Ein Klick startet die lokale Oberfläche bei Bedarf und öffnet den Standardbrowser.
+    // Vorhandene Prüf- und Verschiebungsbefehle bleiben unverändert.
+    const launch = view => {
+      try { this.launchAssistant(view); }
+      catch (error) { new Notice("Jevos: " + error.message, 10000); }
+    };
+    this.addRibbonIcon("bot", "Jevos – Inbox-Assistent öffnen", () => launch("inbox"));
+    this.addRibbonIcon("shield-check", "Jevos – Textbereinigung öffnen", () => launch("anonymize"));
+    this.addCommand({
+      id: "open-jevos-inbox",
+      name: "Jevos Inbox-Assistent öffnen",
+      callback: () => launch("inbox"),
+    });
+    this.addCommand({
+      id: "open-jevos-anonymize",
+      name: "Jevos Textbereinigung öffnen",
+      callback: () => launch("anonymize"),
+    });
     this.addCommand({
       id: "apply-approved-inbox-moves",
       name: "Freigegebene Inbox-Verschiebungen anwenden",
@@ -77,6 +96,23 @@ module.exports = class JevInboxBridge extends Plugin {
         catch (error) { console.error("[Jev Inbox Bridge]", error); new Notice("Inbox Bridge: " + error.message, 10000); }
       }
     });
+  }
+  launchAssistant(view) {
+    if (process.platform !== "win32")
+      throw new Error("Der Ein-Klick-Launcher unterstützt derzeit Windows.");
+    if (!["inbox", "anonymize"].includes(view))
+      throw new Error("Unbekannte Ansicht.");
+    const repo = path.resolve(this.settings.repo);
+    const launcher = path.join(repo, "scripts", "launch-ui.ps1");
+    if (!fs.existsSync(launcher) || !fs.statSync(launcher).isFile())
+      throw new Error("Launcher fehlt. GitHub-Repository aktualisieren und Plugin-Einstellungen prüfen.");
+    const child = spawn("powershell.exe",
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", launcher, "-View", view],
+      { cwd: repo, detached: true, windowsHide: true, stdio: "ignore" });
+    child.on("error", error => {
+      new Notice("Jevos konnte nicht gestartet werden: " + error.message, 10000);
+    });
+    child.unref();
   }
   getRoot() {
     const adapter = this.app.vault.adapter;

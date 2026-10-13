@@ -1,9 +1,11 @@
 # Erstellt nur die eigene Plugin-Directory, überschreibt keine vorhandenen Plugins ohne -Force.
-param([switch]$Force)
+param([switch]$Force, [string]$VaultPath)
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $config = Get-Content -Raw -LiteralPath (Join-Path $root "config.example.json") | ConvertFrom-Json
-$vault = if (Test-Path (Join-Path $root "config.json")) {
+$vault = if ($VaultPath) {
+    $VaultPath
+} elseif (Test-Path (Join-Path $root "config.json")) {
     (Get-Content -Raw -LiteralPath (Join-Path $root "config.json") | ConvertFrom-Json).vault
 } else { $config.vault }
 if (-not (Test-Path -LiteralPath $vault -PathType Container)) {
@@ -18,4 +20,6 @@ Copy-Item -LiteralPath (Join-Path $root "obsidian-plugin\manifest.json") -Destin
 Copy-Item -LiteralPath (Join-Path $root "obsidian-plugin\main.js") -Destination $target -Force
 Write-Host "Plugin kopiert: $target"
 Write-Host "In Obsidian unter Community-Plugins 'Jev Inbox Bridge' aktivieren."
-Write-Host "Fuer Verschiebungen: Strg+P, 'Freigegebene Inbox-Verschiebungen anwenden'."
+Write-Host "In Obsidian Community-Plugin deaktivieren/aktivieren, damit die neuen linken Symbole erscheinen."
+Write-Host "Links: Bot = Inbox-Assistent; Schild = Textbereinigung."
+Write-Host "Verschiebungen weiterhin nur ueber Strg+P nach separater Freigabe."
